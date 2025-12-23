@@ -24,6 +24,12 @@ class BloomFilter:
         p = (1 - math.exp(-k * n / m)) ** k
         return cls(n, m, k, p)
 
+    @classmethod
+    def from_number_of_hashes(cls, n: int, k: int):
+        m = max(1, round((n * k) / math.log(2)))
+        p = (1 - math.exp(-k * n / m)) ** k
+        return cls(n, m, k, p)
+
     def _hashes(self, item):
         indices = []
         for i in range(self.k):
@@ -48,6 +54,11 @@ class BloomFilter:
 
     def get_false_positive_rate(self) -> float:
         return self.p
+
+    # Metodo per Reducer
+    def add_indices(self, indices):
+        for index in indices:
+            self.bit_array[index] = 1
 
 
 

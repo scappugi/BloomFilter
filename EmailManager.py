@@ -49,3 +49,4 @@ class EmailManager:
             emails.append(f"{name}.{last_name}@{domain}")
 
         return emails
+
