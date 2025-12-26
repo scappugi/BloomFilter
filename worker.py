@@ -8,6 +8,7 @@ import os
 import time
 
 class BloomWorker:
+    print ("start process id:", os.getpid())
     _email_manager = EmailManager.EmailManager()
 
 # Metodo per Mapper
@@ -23,6 +24,7 @@ class BloomWorker:
 
             # Calcola gli indici degli hash
             for i in range(k):
+                # i è il seed della funzione di hash
                 index = mmh3.hash(str(email), i) % m
                 all_indices.append(index)
 

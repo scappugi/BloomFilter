@@ -23,12 +23,12 @@ class BloomOrchestrator:
             self.bloom = BloomFilter.BloomFilter.from_number_of_hashes(self.n_total, arg)
 
 
-    def process_chunks(self, raw_datasets):
+    def process_chunks(self, raw_datasets, num_factors=4):
         print("Processing chunks...")
 
         total_items = len(raw_datasets)
 
-        chunk_factor = 4 # Numero di chunk per worker
+        chunk_factor = num_factors # Numero di chunk per worker
         num_chunks = self.num_workers * chunk_factor
         chunk_size = max(1, total_items // num_chunks)  # Assicuriamoci che sia almeno 1
         # Suddivisione
