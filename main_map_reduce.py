@@ -40,6 +40,16 @@ def main():
 
     print(f"Finito! Bit impostati a 1 nel filtro.")
 
+    print(f"True positives: {true_positives}")
+    print(f"False positives: {false_positives}")
+    print(f"False positive rate: {false_positives / test_size:.4f}")
+
+    # Parametri del Bloom Filter
+    print(f"Size (m): {bloom_filter.get_size()}")
+    print(f"Hash functions (k): {bloom_filter.get_hash_count()}")
+    print(f"False positive rate (p): {bloom_filter.get_false_positive_rate()}")
+
+
 
 
 

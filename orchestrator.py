@@ -45,12 +45,11 @@ class BloomOrchestrator:
 
             # reduce step: unisce i risultati di tutti i worker
             processed_chunks = 0
-            for indices in results:
+            for indices in results: # si blocca in attesa dei risultati se ci sono worker attivi
                 self.bloom.add_indices(indices)
                 processed_chunks += 1
-                print(f"Processed chunks: {processed_chunks}/{len(chunks)}", end="\r")
 
-        print("\nAll chunks processed.")
+        print("\nAll chunks processed." + f" Total chunks: {processed_chunks}")
         return self.bloom
 
 

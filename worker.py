@@ -8,7 +8,6 @@ import os
 import time
 
 class BloomWorker:
-    print ("start process id:", os.getpid())
     _email_manager = EmailManager.EmailManager()
 
 # Metodo per Mapper
