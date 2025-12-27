@@ -49,11 +49,11 @@ def run_sequential(dataset, n, p):
     return bf, avg_time
 
 
-def run_parallel(dataset, n, p):
+def run_parallel(dataset, n, p, np):
 
     print(f"\n\n[Parallelo]   Iniziato...", end="", flush=True)
 
-    orch = orchestrator.BloomOrchestrator(n, p)
+    orch = orchestrator.BloomOrchestrator(n, p, np)
     n_runs = 3
     avg_times = []
     bf = BloomFilter
@@ -73,11 +73,11 @@ def run_parallel(dataset, n, p):
     print(f" Tempo medio: {avg_time:.4f}s")
     return bf, avg_time
 
-def run_parallel_shared_memory(dataset, n, p):
+def run_parallel_shared_memory(dataset, n, p, np):
 
     print(f"\n\n[Parallelo Shared Mem]   Iniziato...", end="", flush=True)
 
-    orch = orchestrator.BloomOrchestrator(n, p)
+    orch = orchestrator.BloomOrchestrator(n, p, np)
     n_runs = 3
     avg_times = []
     bf = BloomFilter
@@ -124,9 +124,11 @@ def evaluate_filter(bloom_filter, test_emails, ground_truth_set, em):
             else:
                 false_positives += 1
     return true_positives, false_positives
-def compare_performance(bf_seq, bf_par, training_dataset, test_size=10000):
+
+
+def compare_performance(bf_seq, bf_par, bf_par_shared, training_dataset, test_size=10000):
     """
-    Confronta i due filtri usando LO STESSO dataset di test.
+    Confronta i TRE filtri usando LO STESSO dataset di test.
     """
     print(f"\n--- CONFRONTO ACCURATEZZA (Test su {test_size} email) ---")
 
@@ -137,34 +139,47 @@ def compare_performance(bf_seq, bf_par, training_dataset, test_size=10000):
     em = EmailManager.EmailManager()
     test_emails = em.generate_complex_email(test_size)
 
+    # 1. Test Sequenziale
     print("Test filtro Sequenziale...", end="")
     tp_seq, fp_seq = evaluate_filter(bf_seq, test_emails, dataset_set, em)
     print(" Fatto.")
 
-    print("Test filtro Parallelo...  ", end="")
+    # 2. Test Parallelo Standard
+    print("Test filtro Parallelo (Std)...  ", end="")
     tp_par, fp_par = evaluate_filter(bf_par, test_emails, dataset_set, em)
     print(" Fatto.")
 
-    print("\n" + "=" * 45)
-    print(f"{'METRICA':<20} | {'SEQUENZIALE':<10} | {'PARALLELO':<10}")
-    print("=" * 45)
-    print(f"{'True Positives':<20} | {tp_seq:<10} | {tp_par:<10}")
-    print(f"{'False Positives':<20} | {fp_seq:<10} | {fp_par:<10}")
+    # 3. Test Parallelo Shared Memory
+    print("Test filtro Parallelo (Shared)...  ", end="")
+    tp_shared, fp_shared = evaluate_filter(bf_par_shared, test_emails, dataset_set, em)
+    print(" Fatto.")
+
+    # --- STAMPA TABELLA ---
+    header_len = 65
+    print("\n" + "=" * header_len)
+    print(f"{'METRICA':<20} | {'SEQ':<10} | {'PAR(Std)':<10} | {'PAR(Shm)':<10}")
+    print("=" * header_len)
+
+    print(f"{'True Positives':<20} | {tp_seq:<10} | {tp_par:<10} | {tp_shared:<10}")
+    print(f"{'False Positives':<20} | {fp_seq:<10} | {fp_par:<10} | {fp_shared:<10}")
 
     fpr_seq = fp_seq / test_size
     fpr_par = fp_par / test_size
-    print(f"{'False Positive Rate':<20} | {fpr_seq:.4f}     | {fpr_par:.4f}")
+    fpr_shared = fp_shared / test_size
 
-    print("-" * 45)
-    print(f"{'Size (m)':<20} | {bf_seq.get_size():<10} | {bf_par.get_size():<10}")
-    print(f"{'Hash count (k)':<20} | {bf_seq.get_hash_count():<10} | {bf_par.get_hash_count():<10}")
-    print("=" * 45)
+    print(f"{'False Positive Rate':<20} | {fpr_seq:.4f}     | {fpr_par:.4f}     | {fpr_shared:.4f}")
 
-    if tp_seq == tp_par and fp_seq == fp_par:
-        print("\nSUCCESSO: I due filtri sono matematicamente IDENTICI.")
+    print("-" * header_len)
+    print(f"{'Size (m)':<20} | {bf_seq.get_size():<10} | {bf_par.get_size():<10} | {bf_par_shared.get_size():<10}")
+    print(
+        f"{'Hash count (k)':<20} | {bf_seq.get_hash_count():<10} | {bf_par.get_hash_count():<10} | {bf_par_shared.get_hash_count():<10}")
+    print("=" * header_len)
+
+    # Verifica Identità Matematica su tutti e 3
+    if (tp_seq == tp_par == tp_shared) and (fp_seq == fp_par == fp_shared):
+        print("\n✅ SUCCESSO: Tutti i tre filtri sono matematicamente IDENTICI.")
     else:
-        print("\nATTENZIONE: I risultati differiscono! C'è un bug nella logica parallela.")
-
+        print("\n⚠️ ATTENZIONE: I risultati differiscono! C'è un bug in una delle implementazioni.")
 
 def main():
     PROBABILITY = 0.01
@@ -182,11 +197,13 @@ def main():
 
         N_EMAILS = len(dataset)
 
-        bf_seq, t_seq = run_sequential(dataset, N_EMAILS, PROBABILITY)
+        bf_seq, t_seq = run_sequential(dataset, N_EMAILS, PROBABILITY, n_processors)
 
-        bf_par, t_par = run_parallel(dataset, N_EMAILS, PROBABILITY)
+        for n_processors in [1, multiprocessing.cpu_count()*2]:
+            bf_par, t_par = run_parallel(dataset, N_EMAILS, PROBABILITY,n_processors)
 
-        bf_par_shared, t_par_shared = run_parallel_shared_memory(dataset, N_EMAILS, PROBABILITY)
+        for n_processors in [1, multiprocessing.cpu_count()*2]:
+            bf_par_shared, t_par_shared = run_parallel_shared_memory(dataset, N_EMAILS, PROBABILITY, n_processors)
 
         speedup = t_seq / t_par
         print(f"\n SPEEDUP: {speedup:.2f}x")
@@ -202,7 +219,7 @@ def main():
         else:
             print("   (Il parallelo Shared Mem è più lento: overhead > guadagno)")
 
-      #  compare_performance(bf_seq, bf_par, dataset)
+        compare_performance(bf_seq, bf_par, bf_par_shared, dataset)
 
 
 if __name__ == "__main__":

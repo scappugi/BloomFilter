@@ -14,7 +14,6 @@ class BloomOrchestrator:
         self.arg = arg
         # Se num_workers è None o 0, usa tutti i core della CPU
         self.num_workers = num_workers if num_workers else multiprocessing.cpu_count()
-
         # Bloom Filter (il "Reducer" finale)
         if arg < 1.0:
             self.bloom = BloomFilter.BloomFilter.from_probability(self.n_total, arg)
@@ -70,8 +69,10 @@ class BloomOrchestrator:
     def run_worker(self, chunks):
         shared_bit_array = multiprocessing.Array('b', self.bloom.m , lock = False)
         args = [(chunk, self.bloom.m, self.bloom.k) for chunk in chunks]
-        pool = multiprocessing.Pool(initializer = worker.BloomWorker.init_worker_shared, initargs=(shared_bit_array, ), processes= self.num_workers)
-        pool.map(worker.BloomWorker.process_chunk_shared, args)
+        with multiprocessing.Pool(initializer=worker.BloomWorker.init_worker_shared,
+                                  initargs=(shared_bit_array,),
+                                  processes=self.num_workers) as pool:
+            pool.map(worker.BloomWorker.process_chunk_shared, args)
 
         self.bloom.bit_array = shared_bit_array
         return self.bloom
