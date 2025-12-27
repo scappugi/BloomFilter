@@ -1,6 +1,8 @@
 import os
 import time
 import multiprocessing
+from time import perf_counter
+
 import BloomFilter
 import EmailManager
 import orchestrator
@@ -24,39 +26,78 @@ def load_dataset_from_csv(filename):
 
 def run_sequential(dataset, n, p):
 
-    print(f"[Sequenziale] Iniziato...", end="", flush=True)
+    print(f"\n\n[Sequenziale] Iniziato...", end="", flush=True)
 
     bf = BloomFilter.BloomFilter.from_probability(n, p)
     em = EmailManager.EmailManager()
+    avg_times = []
+    n_runs = 3
+    for _ in range(n_runs):
+        start = time.perf_counter()
 
-    start = time.time()
+        for raw_email in dataset:
+            email = em.normalize_email(raw_email)
+            bf.add(email)
 
-    for raw_email in dataset:
-        email = em.normalize_email(raw_email)
-        bf.add(email)
+        end = time.perf_counter()
+        elapsed = end - start
+        avg_times.append(elapsed)
+    avg_time = sum(avg_times) / len(avg_times)
 
-    end = time.time()
-    elapsed = end - start
 
-    print(f" Fatto in {elapsed:.4f}s")
-    return bf, elapsed
+    print(f"\n Tempo medio: {avg_time:.4f}s")
+    return bf, avg_time
 
 
 def run_parallel(dataset, n, p):
 
-    print(f"[Parallelo]   Iniziato...", end="", flush=True)
+    print(f"\n\n[Parallelo]   Iniziato...", end="", flush=True)
 
     orch = orchestrator.BloomOrchestrator(n, p)
+    n_runs = 3
+    avg_times = []
+    bf = BloomFilter
 
-    start = time.time()
+    for i in range(n_runs):
+        print (f"\n Esecuzione MapReduce n: {i}", end="", flush=True)
+        start = time.time()
 
-    bf = orch.process_chunks(dataset)
+        bf = orch.process_chunks(dataset)
 
-    end = time.time()
-    elapsed = end - start
+        end = time.time()
+        elapsed = end - start
+        avg_times.append(elapsed)
+    avg_time = sum(avg_times) / len(avg_times)
 
-    print(f" Fatto in {elapsed:.4f}s")
-    return bf, elapsed
+
+    print(f" Tempo medio: {avg_time:.4f}s")
+    return bf, avg_time
+
+def run_parallel_shared_memory(dataset, n, p):
+
+    print(f"\n\n[Parallelo Shared Mem]   Iniziato...", end="", flush=True)
+
+    orch = orchestrator.BloomOrchestrator(n, p)
+    n_runs = 3
+    avg_times = []
+    bf = BloomFilter
+
+    for i in range(n_runs):
+        print (f"\n Esecuzione Shared Mem {i}", end="", flush=True)
+        start = time.time()
+
+        chunk = orch.split_data(dataset)
+        bf = orch.run_worker(chunk)
+
+
+        end = time.time()
+        elapsed = end - start
+        avg_times.append(elapsed)
+    avg_time = sum(avg_times) / len(avg_times)
+
+
+    print(f" Tempo medio: {avg_time:.4f}s")
+    return bf, avg_time
 
 
 def print_stats(bf, nome_algoritmo):
@@ -145,12 +186,21 @@ def main():
 
         bf_par, t_par = run_parallel(dataset, N_EMAILS, PROBABILITY)
 
+        bf_par_shared, t_par_shared = run_parallel_shared_memory(dataset, N_EMAILS, PROBABILITY)
+
         speedup = t_seq / t_par
         print(f"\n SPEEDUP: {speedup:.2f}x")
         if speedup > 1:
             print(f"   (Il parallelo è {speedup:.2f} volte più veloce)")
         else:
             print("   (Il parallelo è più lento: overhead > guadagno)")
+
+        speedup_shared = t_seq / t_par_shared
+        print(f"\n SPEEDUP Shared Mem: {speedup_shared:.2f}x")
+        if speedup_shared > 1:
+            print(f"   (Il parallelo Shared Mem è {speedup_shared:.2f} volte più veloce)")
+        else:
+            print("   (Il parallelo Shared Mem è più lento: overhead > guadagno)")
 
       #  compare_performance(bf_seq, bf_par, dataset)
 

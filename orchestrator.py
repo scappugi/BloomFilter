@@ -24,7 +24,11 @@ class BloomOrchestrator:
 
 
     def process_chunks(self, raw_datasets, num_factors=4):
-        print("Processing chunks...")
+
+        """
+        raw_datasets: Lista di email raw da processare.
+        num_factors: Numero di chunk per worker.
+        """
 
         total_items = len(raw_datasets)
 
@@ -49,9 +53,28 @@ class BloomOrchestrator:
                 self.bloom.add_indices(indices)
                 processed_chunks += 1
 
-        print("\nAll chunks processed." + f" Total chunks: {processed_chunks}")
         return self.bloom
 
+
+    def split_data(self, raw_datasets, num_factors=4):
+
+        total_items = len(raw_datasets)
+
+        chunk_factor = num_factors # Numero di chunk per worker
+        num_chunks = self.num_workers * chunk_factor
+        chunk_size = max(1, total_items // num_chunks)  # Assicuriamoci che sia almeno 1
+        # Suddivisione
+        chunks = [raw_datasets[i:i + chunk_size] for i in range(0, total_items, chunk_size)]
+        return chunks
+
+    def run_worker(self, chunks):
+        shared_bit_array = multiprocessing.Array('b', self.bloom.m , lock = False)
+        args = [(chunk, self.bloom.m, self.bloom.k) for chunk in chunks]
+        pool = multiprocessing.Pool(initializer = worker.BloomWorker.init_worker_shared, initargs=(shared_bit_array, ), processes= self.num_workers)
+        pool.map(worker.BloomWorker.process_chunk_shared, args)
+
+        self.bloom.bit_array = shared_bit_array
+        return self.bloom
 
 
 

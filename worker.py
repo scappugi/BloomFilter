@@ -8,6 +8,7 @@ import os
 import time
 
 class BloomWorker:
+    toShare = []
     _email_manager = EmailManager.EmailManager()
 
 # Metodo per Mapper
@@ -28,3 +29,20 @@ class BloomWorker:
                 all_indices.append(index)
 
         return all_indices
+
+    @staticmethod
+    def process_chunk_shared(args):
+        raw_emails_chunk, m, k = args
+        # Per ogni email nel pacchetto
+        for raw_email in raw_emails_chunk:
+            email = BloomWorker._email_manager.normalize_email(raw_email)
+
+            for i in range(k):
+                index = mmh3.hash(str(email), i) % m
+
+                # Aggiorna l'array di bit condiviso
+                BloomWorker.toShare[index] = 1
+
+    @staticmethod
+    def init_worker_shared(shared_array):
+        BloomWorker.toShare = shared_array
