@@ -30,11 +30,15 @@ class BloomFilter:
         p = (1 - math.exp(-k * n / m)) ** k
         return cls(n, m, k, p)
 
-    def _hashes(self, item):
+    @staticmethod
+    def calculate_hashes(item,m:int, k:int):
         indices = []
-        for i in range(self.k):
-            indices.append(mmh3.hash(str(item), i) % self.m)
+        for i in range(k):
+            indices.append(mmh3.hash(str(item), i) % m)
         return indices
+
+    def _hashes(self, item):
+        return self.calculate_hashes(item, self.m, self.k)
 
     def add(self, item):
         for index  in self._hashes(item):

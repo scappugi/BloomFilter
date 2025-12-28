@@ -49,7 +49,7 @@ def run_sequential(dataset, n, p):
     return bf, avg_time
 
 
-def run_parallel(dataset, n, p, np):
+def run_parallel(dataset, n, p, np = multiprocessing.cpu_count()):
 
     print(f"\n\n[Parallelo]   Iniziato...", end="", flush=True)
 
@@ -70,10 +70,10 @@ def run_parallel(dataset, n, p, np):
     avg_time = sum(avg_times) / len(avg_times)
 
 
-    print(f" Tempo medio: {avg_time:.4f}s")
+    print(f"\n Tempo medio: {avg_time:.4f}s")
     return bf, avg_time
 
-def run_parallel_shared_memory(dataset, n, p, np):
+def run_parallel_shared_memory(dataset, n, p, np = multiprocessing.cpu_count()):
 
     print(f"\n\n[Parallelo Shared Mem]   Iniziato...", end="", flush=True)
 
@@ -96,7 +96,7 @@ def run_parallel_shared_memory(dataset, n, p, np):
     avg_time = sum(avg_times) / len(avg_times)
 
 
-    print(f" Tempo medio: {avg_time:.4f}s")
+    print(f"\n Tempo medio: {avg_time:.4f}s")
     return bf, avg_time
 
 
@@ -197,13 +197,11 @@ def main():
 
         N_EMAILS = len(dataset)
 
-        bf_seq, t_seq = run_sequential(dataset, N_EMAILS, PROBABILITY, n_processors)
+        bf_seq, t_seq = run_sequential(dataset, N_EMAILS, PROBABILITY)
 
-        for n_processors in [1, multiprocessing.cpu_count()*2]:
-            bf_par, t_par = run_parallel(dataset, N_EMAILS, PROBABILITY,n_processors)
+        bf_par, t_par = run_parallel(dataset, N_EMAILS, PROBABILITY,)
 
-        for n_processors in [1, multiprocessing.cpu_count()*2]:
-            bf_par_shared, t_par_shared = run_parallel_shared_memory(dataset, N_EMAILS, PROBABILITY, n_processors)
+        bf_par_shared, t_par_shared = run_parallel_shared_memory(dataset, N_EMAILS, PROBABILITY)
 
         speedup = t_seq / t_par
         print(f"\n SPEEDUP: {speedup:.2f}x")
@@ -219,7 +217,7 @@ def main():
         else:
             print("   (Il parallelo Shared Mem è più lento: overhead > guadagno)")
 
-        compare_performance(bf_seq, bf_par, bf_par_shared, dataset)
+        #compare_performance(bf_seq, bf_par, bf_par_shared, dataset)
 
 
 if __name__ == "__main__":

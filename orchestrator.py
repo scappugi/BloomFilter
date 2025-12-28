@@ -44,7 +44,7 @@ class BloomOrchestrator:
 
         with multiprocessing.Pool(processes=self.num_workers) as pool:
             # map step: distribuisce i chunk ai worker
-            results = pool.imap_unordered(worker.BloomWorker.process_chunk, args)
+            results = pool.imap_unordered(worker.process_chunk, args)
 
             # reduce step: unisce i risultati di tutti i worker
             processed_chunks = 0
@@ -69,10 +69,10 @@ class BloomOrchestrator:
     def run_worker(self, chunks):
         shared_bit_array = multiprocessing.Array('b', self.bloom.m , lock = False)
         args = [(chunk, self.bloom.m, self.bloom.k) for chunk in chunks]
-        with multiprocessing.Pool(initializer=worker.BloomWorker.init_worker_shared,
+        with multiprocessing.Pool(initializer=worker.init_worker_shared,
                                   initargs=(shared_bit_array,),
                                   processes=self.num_workers) as pool:
-            pool.map(worker.BloomWorker.process_chunk_shared, args)
+            pool.map(worker.process_chunk_shared, args)
 
         self.bloom.bit_array = shared_bit_array
         return self.bloom
