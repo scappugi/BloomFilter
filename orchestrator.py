@@ -1,7 +1,9 @@
 import BloomFilter
 import multiprocessing
 import worker
-
+from joblib import Parallel, delayed
+from multiprocessing import shared_memory
+import numpy as np
 
 class BloomOrchestrator:
     def __init__(self, n_total, arg, num_workers=None):
@@ -29,14 +31,7 @@ class BloomOrchestrator:
         num_factors: Numero di chunk per worker.
         """
 
-        total_items = len(raw_datasets)
-
-        chunk_factor = num_factors # Numero di chunk per worker
-        num_chunks = self.num_workers * chunk_factor
-        chunk_size = max(1, total_items // num_chunks)  # Assicuriamoci che sia almeno 1
-        # Suddivisione
-        chunks = [raw_datasets[i:i + chunk_size] for i in range(0, total_items, chunk_size)]
-
+        chunks = self.split_data(raw_datasets, num_factors)
         # Parametri del Bloom Filter
         m = self.bloom.get_size()
         k = self.bloom.get_hash_count()
@@ -74,8 +69,55 @@ class BloomOrchestrator:
                                   processes=self.num_workers) as pool:
             pool.map(worker.process_chunk_shared, args)
 
-        self.bloom.bit_array = shared_bit_array
+        self.bloom.bit_array = list(shared_bit_array)
         return self.bloom
+
+    def run_joblib_worker(self, raw_datasets, num_factors=4):
+        total_items = len(raw_datasets)
+        num_chunks = self.num_workers * num_factors
+        chunk_size = max(1, total_items // num_chunks)
+        chunks = [raw_datasets[i:i + chunk_size] for i in range(0, total_items, chunk_size)]
+
+        m = self.bloom.get_size()
+        k = self.bloom.get_hash_count()
+        args = [(chunk, m, k) for chunk in chunks]
+        #passo di map
+        results = Parallel(n_jobs=self.num_workers)(
+            delayed(worker.process_joblib_standard)(arg) for arg in args
+        )
+        #passo di reduce
+        for indices in results:
+            self.bloom.add_indices(indices)
+        return self.bloom
+
+    def run_joblib_shared_worker(self, raw_datasets, num_factors=4):
+        total_items = len(raw_datasets)
+        num_chunks = self.num_workers * num_factors
+        chunk_size = max(1, total_items // num_chunks)
+        chunks = [raw_datasets[i:i + chunk_size] for i in range(0, total_items, chunk_size)]
+
+        #shared_bit_array = multiprocessing.Array('b', self.bloom.m , lock = False)
+
+        m = self.bloom.get_size()
+        k = self.bloom.get_hash_count()
+        dtype = np.int8
+        size_in_bytes = m * np.dtype(dtype).itemsize
+        shm = shared_memory.SharedMemory(create=True, size=size_in_bytes)
+
+        try:
+            #serve solo a creare una zona di memoria con tutti 0 (usermo bitarry solo per lettura)
+            bit_array = np.ndarray(shape = (m,), dtype = dtype, buffer = shm.buf)
+            bit_array.fill(0)
+            Parallel(n_jobs=self.num_workers)(
+                delayed(worker.process_joblib_shared)(chunk, m, k, shm.name, 'int8') for chunk in chunks
+            )
+            self.bloom.bit_array = bit_array.tolist()
+
+        finally:
+            shm.close()
+            shm.unlink()
+        return self.bloom
+
 
 
 

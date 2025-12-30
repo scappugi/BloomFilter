@@ -44,6 +44,7 @@ class BloomFilter:
         for index  in self._hashes(item):
             self.bit_array[index] = 1
 
+# passa delle email normalizzate e riceve True se probabilmente sono nel filtro, False se sicuramente non lo sono
     def contains(self, item) -> bool:
         for index in self._hashes(item):
             if self.bit_array[index] == 0:
@@ -63,6 +64,9 @@ class BloomFilter:
     def add_indices(self, indices):
         for index in indices:
             self.bit_array[index] = 1
+
+    def get_bit_array(self):
+        return self.bit_array
 
 
 
