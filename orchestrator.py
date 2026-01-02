@@ -47,8 +47,6 @@ class BloomOrchestrator:
                 np.bitwise_or(buffer, arr_view, out=buffer)
 
             self.bloom.bit_array = buffer.tolist()
-
-
         return self.bloom
 
 
