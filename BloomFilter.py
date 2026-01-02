@@ -10,7 +10,7 @@ class BloomFilter:
         self.m = m
         self.k = k
         self.p = p
-        self.bit_array = [0] * m
+        self.bit_array = bytearray(m)
 
     @classmethod
     def from_probability(cls, n: int, p: float):

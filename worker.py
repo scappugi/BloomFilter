@@ -21,15 +21,18 @@ def init_worker_shared(shared_array):
 # Metodo per Mapper
 def process_chunk(args):
     raw_emails_chunk, m, k = args
-    all_indices = []
+    all_indices = bytearray(m)
 
     # Per ogni email nel pacchetto
     for raw_email in raw_emails_chunk:
         # Normalizza l'email
         email = _email_manager.normalize_email(raw_email)
         indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
-        all_indices.extend(indices)
+        # Aggiorna l'array di bit locale
+        for index in indices:
+            all_indices[index] = 1
 
+    # Ritorna l'array di bit locale (seriealizzazione piu veloce di una classica lista)
     return all_indices
 
 
@@ -44,16 +47,16 @@ def process_chunk_shared(args):
             toShare[index] = 1
 
 
-def process_joblib_standard(args):
-    raw_emails_chunk, m, k = args
-    all_indices = []
+def process_joblib_standard(chunk, m, k):
+    local_bits = bytearray(m)
+    calc_hashes = BloomFilter.BloomFilter.calculate_hashes
 
-    for raw_email in raw_emails_chunk:
+    for raw_email in chunk:
         email = _email_manager.normalize_email(raw_email)
-        indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
-        all_indices.extend(indices)
+        for idx in calc_hashes(email, m, k):
+            local_bits[idx] = 1
 
-    return all_indices
+    return local_bits
 
 def process_joblib_shared(raw_emails_chunk, m, k, shm_name, dtype):
     shm = shared_memory.SharedMemory(name = shm_name)

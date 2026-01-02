@@ -266,9 +266,11 @@ def main():
 
     print(f"--- BENCHMARK AUTOMATICO (CPU Cores: {multiprocessing.cpu_count()}) ---")
 
-    dt = ["dataset_1.5m.csv", ]
-    dt1 = load_dataset_from_csv("dataset_1.5m.csv")
+    dt = ["dataset_500k.csv", ]
+    dt1 = load_dataset_from_csv("dataset_500k.csv")
     bf_seq, t_seq = run_sequential(dt1, len(dt1), PROBABILITY)
+    bf_par, t_par = run_parallel(dt1, len(dt1), PROBABILITY, 8)
+    print(f"\n il tempo parallelo è: {t_par} e il tempo sequenziale è: {t_seq}, lo speedup è: {t_seq / t_par}")
 
     for filename in DATASETS_FILES:
         print("\n" + "=" * 60)

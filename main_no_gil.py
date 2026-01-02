@@ -6,6 +6,7 @@ import os
 import numpy as np
 import EmailManager
 import BloomFilter
+from test import run_sequential
 
 PROBABILITY = 0.01
 _bf_params = None  # (m, k)
@@ -44,12 +45,15 @@ def worker_thread(emails_chunk):
 
 
 def main():
+    dt1 = load_dataset_from_csv("dataset_500k.csv")
+    bf_seq, t_seq = run_sequential(dt1, len(dt1), PROBABILITY)
+
     print(f"--- BLOOM FILTER PY {sys.version.split()[0]} + BYTEARRAY ---")
 
     gil_status = "DISATTIVATO" if hasattr(sys, "_is_gil_enabled") and not sys._is_gil_enabled() else "ATTIVO"
     print(f"Stato GIL: {gil_status}")
 
-    filename = "dataset_10m.csv"
+    filename = "dataset_500k.csv"
     dataset = load_dataset_from_csv(filename)
     if dataset is None: return
 

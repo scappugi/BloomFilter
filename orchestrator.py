@@ -40,12 +40,14 @@ class BloomOrchestrator:
         with multiprocessing.Pool(processes=self.num_workers) as pool:
             # map step: distribuisce i chunk ai worker
             results = pool.imap_unordered(worker.process_chunk, args)
-
+            buffer = np.zeros(m, dtype=np.uint8)
             # reduce step: unisce i risultati di tutti i worker
-            processed_chunks = 0
-            for indices in results: # si blocca in attesa dei risultati se ci sono worker attivi
-                self.bloom.add_indices(indices)
-                processed_chunks += 1
+            for ba in results: # si blocca in attesa dei risultati se ci sono worker attivi
+                arr_view = np.frombuffer(ba, dtype=np.uint8)
+                np.bitwise_or(buffer, arr_view, out=buffer)
+
+            self.bloom.bit_array = buffer.tolist()
+
 
         return self.bloom
 
@@ -83,11 +85,15 @@ class BloomOrchestrator:
         args = [(chunk, m, k) for chunk in chunks]
         #passo di map
         results = Parallel(n_jobs=self.num_workers)(
-            delayed(worker.process_joblib_standard)(arg) for arg in args
+            delayed(worker.process_joblib_standard)(chunk, m, k) for chunk in chunks
         )
+        buffer = np.zeros(m, dtype=np.uint8)
+
         #passo di reduce
-        for indices in results:
-            self.bloom.add_indices(indices)
+        for ba in results:
+            np.bitwise_or(buffer, np.frombuffer(ba,np.uint8), out=buffer)
+
+        self.bloom.bit_array = buffer.tolist()
         return self.bloom
 
     def run_joblib_shared_worker(self, raw_datasets, num_factors=4):
