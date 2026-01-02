@@ -266,6 +266,10 @@ def main():
 
     print(f"--- BENCHMARK AUTOMATICO (CPU Cores: {multiprocessing.cpu_count()}) ---")
 
+    dt = ["dataset_1.5m.csv", ]
+    dt1 = load_dataset_from_csv("dataset_1.5m.csv")
+    bf_seq, t_seq = run_sequential(dt1, len(dt1), PROBABILITY)
+
     for filename in DATASETS_FILES:
         print("\n" + "=" * 60)
         print(f" DATASET: {filename}")
