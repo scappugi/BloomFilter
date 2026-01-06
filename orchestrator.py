@@ -1,9 +1,14 @@
+from bitarray import bitarray
+
 import BloomFilter
 import multiprocessing
 import worker
 from joblib import Parallel, delayed
 from multiprocessing import shared_memory
 import numpy as np
+
+from worker import toShare
+
 
 class BloomOrchestrator:
     def __init__(self, n_total, arg, num_workers=None):
@@ -40,20 +45,22 @@ class BloomOrchestrator:
         with multiprocessing.Pool(processes=self.num_workers) as pool:
             # map step: distribuisce i chunk ai worker
             results = pool.imap_unordered(worker.process_chunk, args)
-            buffer = np.zeros(m, dtype=np.uint8)
+            #buffer = np.zeros(m, dtype=np.uint8)
+            global_bitarray = bitarray(m)
+            global_bitarray.setall(0)
+
             # reduce step: unisce i risultati di tutti i worker
             for ba in results: # si blocca in attesa dei risultati se ci sono worker attivi
-                arr_view = np.frombuffer(ba, dtype=np.uint8)
-                np.bitwise_or(buffer, arr_view, out=buffer)
+                # arr_view = np.frombuffer(ba, dtype=np.uint8)
+                # np.bitwise_or(buffer, arr_view, out=buffer)
+                global_bitarray |= ba
 
-            self.bloom.bit_array = buffer.tolist()
+            self.bloom.bit_array = global_bitarray
         return self.bloom
 
-
+#questi due metodi servono per la versione shared memory
     def split_data(self, raw_datasets, num_factors=4):
-
         total_items = len(raw_datasets)
-
         chunk_factor = num_factors # Numero di chunk per worker
         num_chunks = self.num_workers * chunk_factor
         chunk_size = max(1, total_items // num_chunks)  # Assicuriamoci che sia almeno 1
@@ -69,7 +76,9 @@ class BloomOrchestrator:
                                   processes=self.num_workers) as pool:
             pool.map(worker.process_chunk_shared, args)
 
-        self.bloom.bit_array = list(shared_bit_array)
+        final_bloom = bitarray()
+        final_bloom.extend(shared_bit_array)
+        self.bloom.bit_array = final_bloom
         return self.bloom
 
     def run_joblib_worker(self, raw_datasets, num_factors=4):
@@ -85,13 +94,16 @@ class BloomOrchestrator:
         results = Parallel(n_jobs=self.num_workers)(
             delayed(worker.process_joblib_standard)(chunk, m, k) for chunk in chunks
         )
-        buffer = np.zeros(m, dtype=np.uint8)
+        #buffer = np.zeros(m, dtype=np.uint8)
+        buffer = bitarray(m)
+        buffer.setall(0)
 
         #passo di reduce
         for ba in results:
-            np.bitwise_or(buffer, np.frombuffer(ba,np.uint8), out=buffer)
+            #np.bitwise_or(buffer, np.frombuffer(ba,np.uint8), out=buffer)
+            buffer |= ba #bitarray supporta l'operatore OR direttamente
 
-        self.bloom.bit_array = buffer.tolist()
+        self.bloom.bit_array = buffer
         return self.bloom
 
     def run_joblib_shared_worker(self, raw_datasets, num_factors=4):

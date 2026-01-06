@@ -2,6 +2,7 @@ import hashlib
 import math
 
 import mmh3 as mmh3
+from bitarray import bitarray
 
 
 class BloomFilter:
@@ -10,7 +11,7 @@ class BloomFilter:
         self.m = m
         self.k = k
         self.p = p
-        self.bit_array = bytearray(m)
+        self.bit_array = bitarray(m)
 
     @classmethod
     def from_probability(cls, n: int, p: float):

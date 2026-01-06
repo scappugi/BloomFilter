@@ -176,7 +176,7 @@ def evaluate_filter(bloom_filter, test_emails, ground_truth_set, em):
 def compare_performance(bf_seq, bf_par, bf_par_shared, bf_job, bf_job_sh, training_dataset, test_size=10000):
     """
     Confronta i CINQUE filtri usando LO STESSO dataset di test.
-    Nota: bf_job_sh è la tua versione ottimizzata con NumPy.
+
     """
     print(f"\n--- CONFRONTO ACCURATEZZA (Test su {test_size} email) ---")
 
@@ -273,77 +273,80 @@ def main():
     print(f"\n il tempo parallelo è: {t_par} e il tempo sequenziale è: {t_seq}, lo speedup è: {t_seq / t_par}")
 
     for filename in DATASETS_FILES:
-        print("\n" + "=" * 60)
-        print(f" DATASET: {filename}")
-        print("=" * 60)
+        if filename == "dataset_5m.csv":
+            print("\n" + "=" * 60)
+            print(f" DATASET: {filename}")
+            print("=" * 60)
 
-        dataset = load_dataset_from_csv(filename)
-        if dataset is None: continue  # Salta se file mancante
+            dataset = load_dataset_from_csv(filename)
+            if dataset is None: continue  # Salta se file mancante
 
-        N_EMAILS = len(dataset)
-        t_parallel_times = []
-        t_parallel_times_shared = []
-        t_parallel_times_joblib = []
-        t_parallel_times_joblib_shared = []
+            N_EMAILS = len(dataset)
+            t_parallel_times = []
+            t_parallel_times_shared = []
+            t_parallel_times_joblib = []
+            t_parallel_times_joblib_shared = []
 
-        bf_seq, t_seq = run_sequential(dataset, N_EMAILS, PROBABILITY)
-        for n_process in range (1, (multiprocessing.cpu_count()*2)+1):
-            print(f"\n--- Esecuzione con {n_process} processi ---")
+            bf_seq, t_seq = run_sequential(dataset, N_EMAILS, PROBABILITY)
+            for n_process in range (1, (multiprocessing.cpu_count()*2)+1):
+                if n_process >= 14:
 
-            bf_par, t_par = run_parallel(dataset, N_EMAILS, PROBABILITY, n_process)
-            t_parallel_times.append(t_par)
+                    print(f"\n--- Esecuzione con {n_process} processi ---")
 
-            bf_par_shared, t_par_shared = run_parallel_shared_memory(dataset, N_EMAILS, PROBABILITY, n_process)
-            t_parallel_times_shared.append(t_par_shared)
+                    bf_par, t_par = run_parallel(dataset, N_EMAILS, PROBABILITY, n_process)
+                    t_parallel_times.append(t_par)
 
-            bf_joblib, t_par_joblib = run_parallel_joblib(dataset, N_EMAILS, PROBABILITY, n_process)
-            t_parallel_times_joblib.append(t_par_joblib)
+                    bf_par_shared, t_par_shared = run_parallel_shared_memory(dataset, N_EMAILS, PROBABILITY, n_process)
+                    t_parallel_times_shared.append(t_par_shared)
 
-            bf_joblib_shared, t_par_joblib_shared = run_parallel_joblib_shared(dataset, N_EMAILS, PROBABILITY, n_process)
-            t_parallel_times_joblib_shared.append(t_par_joblib_shared)
+                    bf_joblib, t_par_joblib = run_parallel_joblib(dataset, N_EMAILS, PROBABILITY, n_process)
+                    t_parallel_times_joblib.append(t_par_joblib)
 
-        print(f"\nGenerazione grafico scalabilità per {filename}...")
+                    bf_joblib_shared, t_par_joblib_shared = run_parallel_joblib_shared(dataset, N_EMAILS, PROBABILITY, n_process)
+                    t_parallel_times_joblib_shared.append(t_par_joblib_shared)
 
-        plot_utils.plot_scalability(
-            filename,
-            [i for i in range (1,16+1)],  # <--- LISTA (Asse X)
-            t_seq,  # <--- Numero singolo (Linea retta orizzontale)
-            t_parallel_times,  # <--- LISTA
-            t_parallel_times_shared,  # <--- LISTA
-            t_parallel_times_joblib,  # <--- LISTA
-            t_parallel_times_joblib_shared  # <--- LISTA
-        )
+            print(f"\nGenerazione grafico scalabilità per {filename}...")
 
-        speedup = t_seq / t_par
-        print(f"\n SPEEDUP: {speedup:.2f}x")
-        if speedup > 1:
-            print(f"   (Il parallelo è {speedup:.2f} volte più veloce)")
-        else:
-            print("   (Il parallelo è più lento: overhead > guadagno)")
+            plot_utils.plot_scalability(
+                filename,
+                [i for i in range (1,16+1)],
+                t_seq,
+                t_parallel_times,
+                t_parallel_times_shared,
+                t_parallel_times_joblib,
+                t_parallel_times_joblib_shared
+            )
 
-        speedup_shared = t_seq / t_par_shared
-        print(f"\n SPEEDUP Shared Mem: {speedup_shared:.2f}x")
-        if speedup_shared > 1:
-            print(f"   (Il parallelo Shared Mem è {speedup_shared:.2f} volte più veloce)")
-        else:
-            print("   (Il parallelo Shared Mem è più lento: overhead > guadagno)")
+            speedup = t_seq / t_par
+            print(f"\n SPEEDUP: {speedup:.2f}x")
+            if speedup > 1:
+                print(f"   (Il parallelo è {speedup:.2f} volte più veloce)")
+            else:
+                print("   (Il parallelo è più lento: overhead > guadagno)")
 
-        speedup_joblib = t_seq / t_par_joblib
-        print(f"\n SPEEDUP Joblib: {speedup_joblib:.2f}x")
-        if speedup_joblib > 1:
-            print(f"   (Il parallelo Joblib è {speedup_joblib:.2f} volte più veloce)")
-        else:
-            print("   (Il parallelo Joblib è più lento: overhead > guadagno)")
+            speedup_shared = t_seq / t_par_shared
+            print(f"\n SPEEDUP Shared Mem: {speedup_shared:.2f}x")
+            if speedup_shared > 1:
+                print(f"   (Il parallelo Shared Mem è {speedup_shared:.2f} volte più veloce)")
+            else:
+                print("   (Il parallelo Shared Mem è più lento: overhead > guadagno)")
 
-        speedup_joblib_shared = t_seq / t_par_joblib_shared
-        print(f"\n SPEEDUP Joblib Shared Mem: {speedup_joblib_shared:.2f}x")
-        if speedup_joblib_shared > 1:
-            print(f"   (Il parallelo Joblib Shared Mem è {speedup_joblib_shared:.2f} volte più veloce)")
-        else:
-            print("   (Il parallelo Joblib Shared Mem è più lento: overhead > guadagno)")
+            speedup_joblib = t_seq / t_par_joblib
+            print(f"\n SPEEDUP Joblib: {speedup_joblib:.2f}x")
+            if speedup_joblib > 1:
+                print(f"   (Il parallelo Joblib è {speedup_joblib:.2f} volte più veloce)")
+            else:
+                print("   (Il parallelo Joblib è più lento: overhead > guadagno)")
+
+            speedup_joblib_shared = t_seq / t_par_joblib_shared
+            print(f"\n SPEEDUP Joblib Shared Mem: {speedup_joblib_shared:.2f}x")
+            if speedup_joblib_shared > 1:
+                print(f"   (Il parallelo Joblib Shared Mem è {speedup_joblib_shared:.2f} volte più veloce)")
+            else:
+                print("   (Il parallelo Joblib Shared Mem è più lento: overhead > guadagno)")
 
 
-        compare_performance(bf_seq, bf_par, bf_par_shared,bf_joblib, bf_joblib_shared, dataset)
+            compare_performance(bf_seq, bf_par, bf_par_shared,bf_joblib, bf_joblib_shared, dataset)
 
 
 if __name__ == "__main__":

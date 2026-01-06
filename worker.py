@@ -2,14 +2,11 @@ import mmh3
 
 import BloomFilter
 import EmailManager
-import csv
-import multiprocessing
-import os
-import time
+from bitarray import bitarray
 import numpy as np
 from multiprocessing import shared_memory
 # Variabili globale a livello di modulo per il worker corrente
-toShare = []
+toShare = None
 _email_manager = EmailManager.EmailManager()
 
 
@@ -21,7 +18,8 @@ def init_worker_shared(shared_array):
 # Metodo per Mapper
 def process_chunk(args):
     raw_emails_chunk, m, k = args
-    all_indices = bytearray(m)
+    all_indices = bitarray(m)
+    all_indices.setall(0)
 
     # Per ogni email nel pacchetto
     for raw_email in raw_emails_chunk:
@@ -38,6 +36,7 @@ def process_chunk(args):
 
 def process_chunk_shared(args):
     raw_emails_chunk, m, k = args
+    local_array = toShare #ottiene il riferimento all'array di bit condiviso
     # Per ogni email nel pacchetto
     for raw_email in raw_emails_chunk:
         email = _email_manager.normalize_email(raw_email)
@@ -48,7 +47,7 @@ def process_chunk_shared(args):
 
 
 def process_joblib_standard(chunk, m, k):
-    local_bits = bytearray(m)
+    local_bits = bitarray(m)
     calc_hashes = BloomFilter.BloomFilter.calculate_hashes
 
     for raw_email in chunk:
