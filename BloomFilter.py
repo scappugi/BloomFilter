@@ -12,6 +12,7 @@ class BloomFilter:
         self.k = k
         self.p = p
         self.bit_array = bitarray(m)
+        self.bit_array.setall(0)
 
     @classmethod
     def from_probability(cls, n: int, p: float):

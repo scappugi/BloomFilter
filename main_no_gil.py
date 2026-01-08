@@ -4,6 +4,8 @@ import time
 import sys
 import os
 import numpy as np
+from bitarray import bitarray
+
 import EmailManager
 import BloomFilter
 from test import run_sequential
@@ -32,7 +34,8 @@ def worker_thread(emails_chunk):
     m, k = _bf_params
     local_em = _em
 
-    local_bytearray = bytearray(m)
+    local_bytearray = bitarray(m)
+    local_bytearray.setall(0)
 
     for raw_email in emails_chunk:
         email = local_em.normalize_email(raw_email)
@@ -76,17 +79,18 @@ def main():
     start_time = time.time()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-        results = list(executor.map(worker_thread, chunks))
+        results = executor.map(worker_thread, chunks)
 
         print("Merge vettorizzato...", end=" ", flush=True)
 
-        # Creiamo un accumulatore NumPy
-        final_array = np.zeros(dummy_bf.m, dtype=np.uint8)
+        buffer = bitarray(dummy_bf.m)
+        buffer.setall(0)
 
+        # passo di reduce
         for ba in results:
-            arr_view = np.frombuffer(ba, dtype=np.uint8)
-            np.bitwise_or(final_array, arr_view, out=final_array)
+            buffer |= ba  # bitarray supporta l'operatore OR direttamente
 
+        dummy_bf.bit_array = buffer
         print("Fatto.")
 
     end_time = time.time()
@@ -94,7 +98,8 @@ def main():
 
     print(f"\nTempo impiegato: {elapsed:.4f} secondi")
     print(f"Velocità: {real_n_emails / elapsed:.0f} email/sec")
-    print(f"Bit a 1: {np.sum(final_array)}")
+    print(f"Bit a 1: {np.sum(dummy_bf.bit_array.count())}")
+    print(f"lunghezza bitarray: {dummy_bf.m}")
 
 
 if __name__ == "__main__":

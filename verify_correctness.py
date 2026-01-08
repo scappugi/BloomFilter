@@ -7,7 +7,7 @@ import orchestrator
 
 class TestBloomCorrectness(unittest.TestCase):
     def setUp(self):
-        self.n_emails = 20000  # Abbastanza per generare collisioni, non troppo lento
+        self.n_emails = 20000
         self.probability = 0.01
         self.num_workers = multiprocessing.cpu_count()
         self.em = EmailManager.EmailManager()
