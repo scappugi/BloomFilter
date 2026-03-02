@@ -4,8 +4,6 @@ import time
 import sys
 import os
 import numpy as np
-from bitarray import bitarray
-
 import EmailManager
 import BloomFilter
 from test import run_sequential
@@ -34,8 +32,7 @@ def worker_thread(emails_chunk):
     m, k = _bf_params
     local_em = _em
 
-    local_bytearray = bitarray(m)
-    local_bytearray.setall(0)
+    local_bytearray = bytearray(m)
 
     for raw_email in emails_chunk:
         email = local_em.normalize_email(raw_email)
@@ -47,8 +44,68 @@ def worker_thread(emails_chunk):
     return local_bytearray
 
 
+def run_threaded_benchmark(dataset, num_threads, n_runs=3):
+    """Esegue il test N volte con un numero specifico di thread e ritorna il tempo medio."""
+    global _bf_params
+    dummy_bf = BloomFilter.BloomFilter.from_probability(len(dataset), PROBABILITY)
+    _bf_params = (dummy_bf.m, dummy_bf.k)
+
+    chunk_size = max(1, len(dataset) // num_threads)
+    chunks = [dataset[i:i + chunk_size] for i in range(0, len(dataset), chunk_size)]
+
+    tempi_parziali = []
+
+    for _ in range(n_runs):
+        start_time = time.time()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+            results = list(executor.map(worker_thread, chunks))
+
+            # Merge vettorizzato
+            final_array = np.zeros(dummy_bf.m, dtype=np.uint8)
+            for ba in results:
+                arr_view = np.frombuffer(ba, dtype=np.uint8)
+                np.bitwise_or(final_array, arr_view, out=final_array)
+
+        end_time = time.time()
+        tempi_parziali.append(end_time - start_time)
+
+    # Calcola e restituisce la media dei tempi
+    tempo_medio = sum(tempi_parziali) / n_runs
+    return tempo_medio
+
+
+def run_full_test():
+    DATASETS_FILES = ["dataset_10k.csv", "dataset_100k.csv", "dataset_500k.csv", "dataset_1.5m.csv", "dataset_3m.csv",
+                      "dataset_5m.csv", "dataset_10m.csv"]
+    N_RUNS = 3
+
+    print("\n\n" + "=" * 60)
+    print(f" INIZIO BENCHMARK COMPLETO (Media su {N_RUNS} run)")
+    print("=" * 60)
+
+    for filename in DATASETS_FILES:
+        dataset = load_dataset_from_csv(filename)
+        if not dataset:
+            continue
+
+        n_emails = len(dataset)
+
+        # Calcoliamo prima la baseline sequenziale (run_sequential fa già 3 run interne)
+        print(f"\n[Dataset: {filename} - {n_emails} email]")
+        _, t_seq = run_sequential(dataset, n_emails, PROBABILITY)
+
+        print(f"\nTest Scalabilità (1-16 Thread):")
+        for t in range(1, 17):
+            print(f"  -> {t:2} Thread: ", end="", flush=True)
+            t_thread_avg = run_threaded_benchmark(dataset, t, n_runs=N_RUNS)
+
+            speedup = t_seq / t_thread_avg
+            print(f"{t_thread_avg:.4f}s | Speedup: {speedup:.2f}x")
+
+
 def main():
-    dt1 = load_dataset_from_csv("dataset_500k.csv")
+    dt1 = load_dataset_from_csv("dataset_10m.csv")
     bf_seq, t_seq = run_sequential(dt1, len(dt1), PROBABILITY)
 
     print(f"--- BLOOM FILTER PY {sys.version.split()[0]} + BYTEARRAY ---")
@@ -56,7 +113,7 @@ def main():
     gil_status = "DISATTIVATO" if hasattr(sys, "_is_gil_enabled") and not sys._is_gil_enabled() else "ATTIVO"
     print(f"Stato GIL: {gil_status}")
 
-    filename = "dataset_500k.csv"
+    filename = "dataset_10m.csv"
     dataset = load_dataset_from_csv(filename)
     if dataset is None: return
 
@@ -79,18 +136,17 @@ def main():
     start_time = time.time()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-        results = executor.map(worker_thread, chunks)
+        results = list(executor.map(worker_thread, chunks))
 
         print("Merge vettorizzato...", end=" ", flush=True)
 
-        buffer = bitarray(dummy_bf.m)
-        buffer.setall(0)
+        # Creiamo un accumulatore NumPy
+        final_array = np.zeros(dummy_bf.m, dtype=np.uint8)
 
-        # passo di reduce
         for ba in results:
-            buffer |= ba  # bitarray supporta l'operatore OR direttamente
+            arr_view = np.frombuffer(ba, dtype=np.uint8)
+            np.bitwise_or(final_array, arr_view, out=final_array)
 
-        dummy_bf.bit_array = buffer
         print("Fatto.")
 
     end_time = time.time()
@@ -98,8 +154,15 @@ def main():
 
     print(f"\nTempo impiegato: {elapsed:.4f} secondi")
     print(f"Velocità: {real_n_emails / elapsed:.0f} email/sec")
-    print(f"Bit a 1: {np.sum(dummy_bf.bit_array.count())}")
-    print(f"lunghezza bitarray: {dummy_bf.m}")
+    print(f"Bit a 1: {np.sum(final_array)}")
+
+    print("\n" + "-" * 40)
+    scelta = input("Vuoi procedere con il test completo di tutti i dataset (da 1 a 16 thread)? [s/N]: ")
+
+    if scelta.strip().lower() in ['s', 'si', 'y', 'yes']:
+        run_full_test()
+    else:
+        print("Uscita dal programma.")
 
 
 if __name__ == "__main__":

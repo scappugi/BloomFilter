@@ -13,7 +13,7 @@ def plot_scalability(dataset_name, worker_counts, seq_time, mp_std, mp_shm, job_
     plt.plot(worker_counts, mp_std, marker='o', label="MP Standard")
     plt.plot(worker_counts, mp_shm, marker='s', label="MP Shared")
     plt.plot(worker_counts, job_std, marker='^', label="Joblib Std")
-    plt.plot(worker_counts, job_np, marker='*', linewidth=2, label="Joblib NumPy (Best)")
+    plt.plot(worker_counts, job_np, marker='*', linewidth=2, label="Joblib NumPy shared")
 
     plt.title(f"Tempi di Esecuzione: {dataset_name}")
     plt.xlabel("Numero di Worker")
