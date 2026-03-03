@@ -3,7 +3,11 @@ import csv
 import time
 import sys
 import os
+from asyncio import wait
+
 import numpy as np
+from bitarray import bitarray
+
 import EmailManager
 import BloomFilter
 from test import run_sequential
@@ -42,6 +46,40 @@ def worker_thread(emails_chunk):
             local_bytearray[idx] = 1
 
     return local_bytearray
+
+
+def worker_thread_bitarray(emails_chunk):
+    m, k = _bf_params
+    local_em = _em
+
+    # Alloca un bitarray locale leggero (~12MB per 100M di bit)
+    local_bits = bitarray(m)
+    local_bits.setall(0)
+
+    for raw_email in emails_chunk:
+        email = local_em.normalize_email(raw_email)
+        indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
+
+        for idx in indices:
+            local_bits[idx] = 1
+
+    return local_bits
+
+
+def worker_thread_shared(emails_chunk):
+    m, k = _bf_params
+    local_em = _em
+
+    # Accede all'array globale istanziato nel main
+    global _shared_filter
+
+    for raw_email in emails_chunk:
+        email = local_em.normalize_email(raw_email)
+        indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
+
+        for idx in indices:
+            # Scrittura diretta lock-free
+            _shared_filter[idx] = 1
 
 
 def run_threaded_benchmark(dataset, num_threads, n_runs=3):
@@ -105,8 +143,8 @@ def run_full_test():
 
 
 def main():
-    dt1 = load_dataset_from_csv("dataset_10m.csv")
-    bf_seq, t_seq = run_sequential(dt1, len(dt1), PROBABILITY)
+    dt1 = load_dataset_from_csv("dataset_500k.csv")
+    #bf_seq, t_seq = run_sequential(dt1, len(dt1), PROBABILITY)
 
     print(f"--- BLOOM FILTER PY {sys.version.split()[0]} + BYTEARRAY ---")
 
@@ -155,6 +193,39 @@ def main():
     print(f"\nTempo impiegato: {elapsed:.4f} secondi")
     print(f"Velocità: {real_n_emails / elapsed:.0f} email/sec")
     print(f"Bit a 1: {np.sum(final_array)}")
+
+    print(" TEST 1: MAP-REDUCE CON BITARRAY")
+    print("=" * 60)
+    start_time_mr = time.time()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+        results = list(executor.map(worker_thread_bitarray, chunks))
+
+    print("Fase Map finita. Inizio Reduce (Merge)...", end="", flush=True)
+    final_bitarray = bitarray(dummy_bf.m)
+    final_bitarray.setall(0)
+    for ba in results:
+        final_bitarray |= ba
+
+    elapsed_mr = time.time() - start_time_mr
+    print(" Fatto.")
+    print(f"Tempo Map-Reduce (BitArray): {elapsed_mr:.4f} secondi")
+
+    print(" TEST 2: SHARED MEMORY CON NUMPY (Scrittura Diretta)")
+    print("=" * 60)
+    global _shared_filter
+    _shared_filter = np.zeros(dummy_bf.m, dtype=np.uint8)
+    start_time_sh = time.time()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+        list(executor.map(worker_thread_shared, chunks))
+
+    elapsed_sh = time.time() - start_time_sh
+    print(f"Tempo Shared Mem (NumPy): {elapsed_sh:.4f} secondi")
+
+    print("\n" + "-" * 60)
+    speedup_diff = elapsed_mr / elapsed_sh
+    print(f"Rapporto finale: La modalità Shared è {speedup_diff:.2f}x volte rispetto alla BitArray")
 
     print("\n" + "-" * 40)
     scelta = input("Vuoi procedere con il test completo di tutti i dataset (da 1 a 16 thread)? [s/N]: ")

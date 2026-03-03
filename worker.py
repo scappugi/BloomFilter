@@ -69,3 +69,47 @@ def process_joblib_shared(raw_emails_chunk, m, k, shm_name, dtype):
     #chiude il collegamento
     shm.close()
 
+###############################################################################################################
+#                                           Metodi per noGIL
+###############################################################################################################
+
+#Questo metodo potrebbe essere molto inefficiente con dataset molto grossi (se si richiede un p molto piccolo)
+def process_thread_bytearray(args):
+
+    raw_emails_chunk, m, k = args
+    local_bytearray = bytearray(m)
+
+    for raw_email in raw_emails_chunk:
+        email = _email_manager.normalize_email(raw_email)
+        indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
+
+        for idx in indices:
+            local_bytearray[idx] = 1
+
+    return local_bytearray
+
+def process_thread(args):
+    raw_emails_chunk, m, k = args
+    local_bits = bitarray(m)
+    local_bits.setall(0)
+
+    for raw_email in raw_emails_chunk:
+        email = _email_manager.normalize_email(raw_email)
+        indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
+        for idx in indices:
+            local_bits[idx] = 1
+
+    return local_bits
+
+def process_thread_shared(args):
+    chunk, m, k = args
+    local_array = toShare
+    for raw_email in chunk:
+        email = _email_manager.normalize_email(raw_email)
+        indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
+        for idx in indices:
+            toShare[idx] = 1
+
+
+
+

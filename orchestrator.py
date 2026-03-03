@@ -1,3 +1,5 @@
+import sys
+
 from bitarray import bitarray
 
 import BloomFilter
@@ -6,6 +8,7 @@ import worker
 from joblib import Parallel, delayed
 from multiprocessing import shared_memory
 import numpy as np
+import concurrent.futures
 
 from worker import toShare
 
@@ -134,7 +137,67 @@ class BloomOrchestrator:
             shm.unlink()
         return self.bloom
 
+    ###############################################################################################################
+    #                                           Metodi per noGIL
+    ###############################################################################################################
 
+    def run_threaded_worker_bytearray(self, raw_datasets, num_factors=4):
 
+        chunks = self.split_data(raw_datasets, num_factors)
+        m = self.bloom.get_size()
+        k = self.bloom.get_hash_count()
+        args = [(chunk, m, k) for chunk in chunks]
 
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+            results = list(executor.map(worker.process_thread_bytearray, args))
+            final_array = np.zeros(self.bloom.m, dtype=np.uint8)
 
+            for ba in results:
+                arr_view = np.frombuffer(ba, dtype=np.uint8)
+                np.bitwise_or(final_array, arr_view, out=final_array)
+            
+            # Conversione finale e assegnazione
+            self.bloom.bit_array = bitarray(final_array.tolist())
+        
+        return self.bloom
+
+    def run_threaded_worker(self, raw_datasets, num_factors=4):
+
+        chunks = self.split_data(raw_datasets, num_factors)
+        m = self.bloom.get_size()
+        k = self.bloom.get_hash_count()
+        args = [(chunk, m, k) for chunk in chunks]
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+            results = list(executor.map(worker.process_thread, args))
+            final_bitarray = bitarray(self.bloom.m)
+            final_bitarray.setall(0)
+            for ba in results:
+                final_bitarray |= ba
+
+            self.bloom.bit_array = final_bitarray
+        return self.bloom
+
+    def run_threaded_shared(self, raw_datasets, num_factors=4):
+
+        chunks = self.split_data(raw_datasets, num_factors)
+        m = self.bloom.get_size()
+        k = self.bloom.get_hash_count()
+        args = [(chunk, m, k) for chunk in chunks]
+
+        # Inizializza l'array condiviso
+        # Usiamo uint8 per simulare bytearray/boolean array
+        shared_array = np.zeros(m, dtype=np.uint8)
+        worker.toShare = shared_array
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+                list(executor.map(worker.process_thread_shared, args))
+
+            # Converti il risultato numpy in bitarray per il bloom filter
+            self.bloom.bit_array = bitarray(shared_array.tolist())
+
+        finally:
+            worker.toShare = None
+
+        return self.bloom
