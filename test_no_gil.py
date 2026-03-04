@@ -196,7 +196,15 @@ def main():
         dt = load_dataset_from_csv(dt_name)
         bf_seq, t_seq = run_sequential(dt, len(dt), PROBABILITY)
         bf_th, t_th = run_threaded_shared(dt, len(dt), PROBABILITY, 4)
+        bf_byte, t_byte = run_threaded_bytearray(dt, len(dt), PROBABILITY, 4)
+        bf_merge, t_merge = run_threaded_merge(dt, len(dt), PROBABILITY, 4)
         print(f"Speedup Preliminare (4 thread): {t_seq/t_th:.2f}x")
+
+        if bf_seq.bit_array == bf_th.bit_array == bf_byte.bit_array == bf_merge.bit_array:
+            print("✅ I bitarray sono IDENTICI.")
+        else:
+            print("❌ I bitarray sono DIVERSI.")
+
 
     # Loop completo sui dataset
     for filename in DATASETS_FILES:
