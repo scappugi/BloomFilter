@@ -71,6 +71,7 @@ class BloomOrchestrator:
         chunks = [raw_datasets[i:i + chunk_size] for i in range(0, total_items, chunk_size)]
         return chunks
 
+#metodo per la gestione di un caso di memory shared
     def run_worker(self, chunks):
         shared_bit_array = multiprocessing.Array('b', self.bloom.m , lock = False)
         args = [(chunk, self.bloom.m, self.bloom.k) for chunk in chunks]

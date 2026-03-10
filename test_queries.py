@@ -4,7 +4,8 @@ import EmailManager
 import random
 from EmailFilterService import EmailFilterService
 from verify_correctness import TestBloomCorrectness
-
+import concurrent.futures
+import multiprocessing
 
 def print_bloom_correctness(bloom_filter, dataset_presenti, test_assenti, em, probability):
 
@@ -42,6 +43,70 @@ def print_bloom_correctness(bloom_filter, dataset_presenti, test_assenti, em, pr
         print(f"ATTENZIONE: FPR troppo alto! Atteso ~{probability}, ottenuto {measured_fpr}")
 
 
+def worker_query(service, emails):
+    #cuore del codice parallelo, riceve un chunk e verifica la presenza delle email.
+    count = 0
+    for email in emails:
+        if service.is_email_present(email):
+            count += 1
+    return count
+
+
+def run_query_benchmark_parallel(service, test_presenti, test_assenti, n_threads=None):
+    if n_threads is None:
+        n_threads = multiprocessing.cpu_count()
+
+    print(f"\n--- AVVIO BENCHMARK PARALLELO ({n_threads} Thread) ---")
+    
+    # dividere in chunk
+    def split_list(lst, n):
+        k, m = divmod(len(lst), n)
+        chunks = []
+        start = 0
+        for i in range(n):
+            end = start + k + (1 if i < m else 0)
+            chunks.append(lst[start:end])
+            start = end
+        return chunks
+
+    chunks_presenti = split_list(test_presenti, n_threads)
+    chunks_assenti = split_list(test_assenti, n_threads)
+
+    # Test Presenti
+    start_time = perf_counter()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+        # Eseguiamo le query in parallelo
+        futures = [executor.submit(worker_query, service, chunk) for chunk in chunks_presenti]
+        # Attendiamo i risultati (opzionale se ci interessa solo il tempo, ma utile per correttezza)
+        results_presenti = sum(f.result() for f in concurrent.futures.as_completed(futures))
+    
+    tempo_presenti = perf_counter() - start_time
+
+    # Test Assenti
+    start_time = perf_counter()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+        futures = [executor.submit(worker_query, service, chunk) for chunk in chunks_assenti]
+        results_assenti = sum(f.result() for f in concurrent.futures.as_completed(futures))
+    
+    tempo_assenti = perf_counter() - start_time
+
+    N_TEST = len(test_presenti) # Assumiamo len(test_presenti) == len(test_assenti) per semplicità di stampa
+
+    # Calcolo metriche
+    lat_presenti = (tempo_presenti / N_TEST) * 1_000_000
+    lat_assenti = (tempo_assenti / N_TEST) * 1_000_000
+
+    print(f"A) Elementi PRESENTI (Parallelo):")
+    print(f"   Latenza media (wall-clock): {lat_presenti:.2f} µs/query")
+    print(f"   Throughput:    {N_TEST / tempo_presenti:,.0f} query/sec")
+    print(f"   Trovati:       {results_presenti}/{N_TEST}")
+
+    print(f"\nB) Elementi ASSENTI (Parallelo):")
+    print(f"   Latenza media (wall-clock): {lat_assenti:.2f} µs/query")
+    print(f"   Throughput:    {N_TEST / tempo_assenti:,.0f} query/sec")
+    print(f"   Trovati (FP):  {results_assenti}/{N_TEST}")
+
+
 def run_query_benchmark():
     N_TRAIN = 500000
     N_TEST = 100000
@@ -73,7 +138,7 @@ def run_query_benchmark():
             break
 
 
-    print("\n--- AVVIO BENCHMARK SISTEMA COMPLETO ---")
+    print("\n--- AVVIO BENCHMARK SISTEMA COMPLETO (Sequenziale) ---")
 
     # Test Presenti
     start_time = perf_counter()
@@ -98,6 +163,7 @@ def run_query_benchmark():
     print(f"\nB) Elementi ASSENTI:")
     print(f"   Latenza media: {lat_assenti:.2f} µs/query")
     print(f"   Throughput:    {N_TEST / tempo_assenti:,.0f} query/sec")
+    
     print_bloom_correctness(
         bloom_filter=service.bloom,
         dataset_presenti=dataset_training,
@@ -106,7 +172,69 @@ def run_query_benchmark():
         probability=PROBABILITY
     )
 
+    run_query_benchmark_parallel(service, test_presenti, test_assenti)
+    
+    # Analisi qualitativa dei Falsi Positivi
+    analyze_false_positives_similarity(service, dataset_training, test_assenti)
 
+
+def levenshtein_distance(s1, s2):
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+
+    if len(s2) == 0:
+        return len(s1)
+
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    
+    return previous_row[-1]
+
+
+def analyze_false_positives_similarity(service, dataset_training, test_assenti, sample_size=5):
+    print(f"\n--- ANALISI QUALITATIVA FALSI POSITIVI (Campione di {sample_size}) ---")
+    
+    # 1. Troviamo i Falsi Positivi
+    false_positives = []
+    for email in test_assenti:
+        if service.is_email_present(email):
+            false_positives.append(email)
+            if len(false_positives) >= sample_size:
+                break
+    
+    if not false_positives:
+        print("Nessun Falso Positivo trovato da analizzare.")
+        return
+
+    print(f"Trovati {len(false_positives)} FP da analizzare. Calcolo distanza minima dal training set...")
+    print("(Questo potrebbe richiedere tempo se il training set è grande)")
+    training_subset = dataset_training
+
+    for fp_email in false_positives:
+        min_dist = float('inf')
+        closest_email = ""
+        
+        for train_email in training_subset:
+            dist = levenshtein_distance(fp_email, train_email)
+            if dist < min_dist:
+                min_dist = dist
+                closest_email = train_email
+                if min_dist == 1: break # Distanza minima possibile (a parte 0), inutile cercare oltre
+        
+        print(f"\nFP: '{fp_email}'")
+        print(f"   -> Più simile: '{closest_email}' (Distanza: {min_dist})")
+        
+        if min_dist <= 2:
+            print("   -> DIAGNOSI: Molto simile. Probabile collisione dovuta alla struttura dell'hash su input simili.")
+        else:
+            print("   -> DIAGNOSI: Distante. Probabile collisione casuale pura.")
 
 
 if __name__ == "__main__":
