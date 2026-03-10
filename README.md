@@ -25,3 +25,17 @@ bash: ```python main.py query```
 Esegue un test specifico sulle performance di lettura. Valuta la latenza e il throughput delle interrogazioni (query) all'interno del Bloom Filter per verificare l'efficienza della struttura dati.
 Nota: Pure in questo caso sono stati usati  dei thread per il parallelismo, è necessario anche in questo caso compilare con un compilatore Python 3.13+ compilato con supporto Free-threading (GIL disabilitato).
 Per completezza in questo caso ho aggiunto un controllo aggiuntivo. Se sei con il GIL attivo verrai avvertito e potrai decidere di non continuare l' esecuzione.
+
+### 4. Unit Tests (Correttezza e Consistenza)
+bash: ``` python main.py test```
+
+Avvia la suite di test automatizzati per validare l'integrità del sistema. Questa modalità esegue:
+
+**Test di Correttezza**: Verifica statistica dell'assenza di falsi negativi e del rispetto del target di falsi positivi.
+
+**Test di Consistenza**: Confronto bit-a-bit tra il filtro generato in sequenziale e quelli generati in parallelo (Multiprocessing, Joblib, Shared Memory) per assicurare che la parallelizzazione non corrompa i dati.
+
+### 5.Esecuzione Completa
+Per eseguire l'intera suite di benchmark e i test di validazione in sequenza:
+
+bash: ```python main.py all```
