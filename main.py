@@ -48,7 +48,7 @@ def main():
     
     parser.add_argument(
         "mode", 
-        choices=["sequential", "threading", "query", "all"],
+        choices=["process", "threading", "query", "all"],
         help="Modalità di esecuzione: 'construction' (processi), 'threading' (thread), 'query' (interrogazioni), 'all' (tutto)"
     )
     
@@ -61,7 +61,7 @@ def main():
 
     args = parser.parse_args()
 
-    if args.mode == "sequential":
+    if args.mode == "process":
         run_process_mode()
     elif args.mode == "threading":
         run_thread_mode()
