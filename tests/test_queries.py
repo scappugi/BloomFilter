@@ -1,3 +1,5 @@
+import os
+import sys
 import time
 from time import perf_counter
 from src import EmailManager
@@ -44,7 +46,7 @@ def print_bloom_correctness(bloom_filter, dataset_presenti, test_assenti, em, pr
 
 
 def worker_query(bloom_filter, em, emails):
-    #cuore del codice parallelo, riceve un chunk e verifica la presenza delle email.
+    """Worker per eseguire query in parallelo."""
     count = 0
     for email in emails:
         normalized = em.normalize_email(email)
@@ -52,26 +54,17 @@ def worker_query(bloom_filter, em, emails):
             count += 1
     return count
 
-
 def run_query_benchmark_parallel(bloom_filter, em, test_presenti, test_assenti, n_threads=None):
-    
     # --- Controllo GIL ---
-    gil_enabled = True
-    if hasattr(sys, "_is_gil_enabled"):
-        if not sys._is_gil_enabled():
-            gil_enabled = False
-    
-    # Se il GIL è attivo, chiediamo conferma
+    gil_enabled = not hasattr(sys, "_is_gil_enabled") or sys._is_gil_enabled()
     if gil_enabled:
         print("\n" + "!"*60)
         print(" ATTENZIONE: Il GIL (Global Interpreter Lock) risulta ATTIVO.")
-        print(" L'esecuzione parallela con i thread potrebbe non portare benefici")
-        print(" o addirittura essere più lenta a causa dell'overhead.")
+        print(" L'esecuzione parallela con i thread potrebbe non portare benefici.")
         print("!"*60)
-        
-        risposta = input("Vuoi procedere comunque con il benchmark parallelo? [y/N]: ").strip().lower()
+        risposta = input("Vuoi procedere comunque? [y/N]: ").strip().lower()
         if risposta not in ['y', 'yes', 's', 'si']:
-            print("Benchmark parallelo annullato dall'utente.")
+            print("Benchmark parallelo annullato.")
             return
     # ---------------------
 
@@ -80,16 +73,9 @@ def run_query_benchmark_parallel(bloom_filter, em, test_presenti, test_assenti, 
 
     print(f"\n--- AVVIO BENCHMARK PARALLELO ({n_threads} Thread) ---")
     
-    # dividere in chunk
     def split_list(lst, n):
         k, m = divmod(len(lst), n)
-        chunks = []
-        start = 0
-        for i in range(n):
-            end = start + k + (1 if i < m else 0)
-            chunks.append(lst[start:end])
-            start = end
-        return chunks
+        return [lst[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n)]
 
     chunks_presenti = split_list(test_presenti, n_threads)
     chunks_assenti = split_list(test_assenti, n_threads)
@@ -97,109 +83,69 @@ def run_query_benchmark_parallel(bloom_filter, em, test_presenti, test_assenti, 
     # Test Presenti
     start_time = perf_counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
-        # Eseguiamo le query in parallelo
         futures = [executor.submit(worker_query, bloom_filter, em, chunk) for chunk in chunks_presenti]
-        # Attendiamo i risultati (opzionale se ci interessa solo il tempo, ma utile per correttezza)
-        results_presenti = sum(f.result() for f in concurrent.futures.as_completed(futures))
-    
+        sum(f.result() for f in concurrent.futures.as_completed(futures))
     tempo_presenti = perf_counter() - start_time
 
     # Test Assenti
     start_time = perf_counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
         futures = [executor.submit(worker_query, bloom_filter, em, chunk) for chunk in chunks_assenti]
-        results_assenti = sum(f.result() for f in concurrent.futures.as_completed(futures))
-    
+        sum(f.result() for f in concurrent.futures.as_completed(futures))
     tempo_assenti = perf_counter() - start_time
 
-    N_TEST = len(test_presenti) # Assumiamo len(test_presenti) == len(test_assenti) per semplicità di stampa
-
-    # Calcolo metriche
-    lat_presenti = (tempo_presenti / N_TEST) * 1_000_000
-    lat_assenti = (tempo_assenti / N_TEST) * 1_000_000
-
+    N_TEST = len(test_presenti)
     print(f"A) Elementi PRESENTI (Parallelo):")
-    print(f"   Latenza media (wall-clock): {lat_presenti:.2f} µs/query")
     print(f"   Throughput:    {N_TEST / tempo_presenti:,.0f} query/sec")
-    print(f"   Trovati:       {results_presenti}/{N_TEST}")
-
     print(f"\nB) Elementi ASSENTI (Parallelo):")
-    print(f"   Latenza media (wall-clock): {lat_assenti:.2f} µs/query")
     print(f"   Throughput:    {N_TEST / tempo_assenti:,.0f} query/sec")
-    print(f"   Trovati (FP):  {results_assenti}/{N_TEST}")
 
-
-def run_query_benchmark():
-    N_TRAIN = 500000
-    N_TEST = 100000
-    PROBABILITY = 0.01
-
-    print("1. Generazione Dati...")
-    # Sostituito EmailFilterService con uso diretto
-    em = EmailManager.EmailManager()
-    bf = BloomFilter.BloomFilter.from_probability(N_TRAIN, PROBABILITY)
-
-    dataset_training = em.generate_complex_email(N_TRAIN)
-
-    print("2. Popolamento del BloomFilter in corso...")
-    for raw_email in dataset_training:
-        normalized = em.normalize_email(raw_email)
-        bf.add(normalized)
-
-    print("3. Preparazione dei dataset di test...")
-    test_presenti = random.sample(dataset_training, N_TEST)
-
-    test_assenti = []
-    #uso set per velocizzare la ricerca da O(n) a O(1)
-    dataset_set = set(dataset_training)
-    #genero il doppio delle email richieste
-    candidates = em.generate_complex_email(N_TEST * 2)
-    for c in candidates:
-        if c not in dataset_set:
-            test_assenti.append(c)
-        #uscita anticipata nel caso in cui raggiungo la quota prima della fine del ciclo
-        if len(test_assenti) == N_TEST:
-            break
-
-
-    print("\n--- AVVIO BENCHMARK SISTEMA COMPLETO (Sequenziale) ---")
+def run_query_benchmark_sequential(bf, em, test_presenti, test_assenti):
+    print("\n--- AVVIO BENCHMARK (Sequenziale) ---")
 
     # Test Presenti
     start_time = perf_counter()
     for email in test_presenti:
-        normalized = em.normalize_email(email)
-        bf.contains(normalized)
+        bf.contains(em.normalize_email(email))
     tempo_presenti = perf_counter() - start_time
 
     # Test Assenti
     start_time = perf_counter()
     for email in test_assenti:
-        normalized = em.normalize_email(email)
-        bf.contains(normalized)
+        bf.contains(em.normalize_email(email))
     tempo_assenti = perf_counter() - start_time
 
-    # Calcolo metriche
-    lat_presenti = (tempo_presenti / N_TEST) * 1_000_000
-    lat_assenti = (tempo_assenti / N_TEST) * 1_000_000
+    N_TEST = len(test_presenti)
 
     print(f"A) Elementi PRESENTI:")
-    print(f"   Latenza media: {lat_presenti:.2f} µs/query")
     print(f"   Throughput:    {N_TEST / tempo_presenti:,.0f} query/sec")
-
     print(f"\nB) Elementi ASSENTI:")
-    print(f"   Latenza media: {lat_assenti:.2f} µs/query")
     print(f"   Throughput:    {N_TEST / tempo_assenti:,.0f} query/sec")
-    
-    print_bloom_correctness(
-        bloom_filter=bf,
-        dataset_presenti=dataset_training,
-        test_assenti=test_assenti,
-        em=em,
-        probability=PROBABILITY
-    )
+
+
+def main():
+    N_TRAIN = 500000
+    N_TEST = 100000
+    PROBABILITY = 0.01
+
+    print("1. Generazione Dati...")
+    em = EmailManager.EmailManager()
+    bf = BloomFilter.BloomFilter.from_probability(N_TRAIN, PROBABILITY)
+    dataset_training = em.generate_complex_email(N_TRAIN)
+
+    print("2. Popolamento del BloomFilter...")
+    for raw_email in dataset_training:
+        bf.add(em.normalize_email(raw_email))
+
+    print("3. Preparazione dei dataset di test...")
+    test_presenti = random.sample(dataset_training, N_TEST)
+    dataset_set = set(dataset_training)
+    test_assenti = [c for c in em.generate_complex_email(N_TEST * 2) if c not in dataset_set][:N_TEST]
+
+    run_query_benchmark_sequential(bf, em, test_presenti, test_assenti)
 
     run_query_benchmark_parallel(bf, em, test_presenti, test_assenti)
-    
+
     # Analisi qualitativa dei Falsi Positivi
     analyze_false_positives_similarity(bf, em, dataset_training, test_assenti)
 
@@ -220,13 +166,13 @@ def levenshtein_distance(s1, s2):
             substitutions = previous_row[j] + (c1 != c2)
             current_row.append(min(insertions, deletions, substitutions))
         previous_row = current_row
-    
+
     return previous_row[-1]
 
 
 def analyze_false_positives_similarity(bloom_filter, em, dataset_training, test_assenti, sample_size=5):
     print(f"\n--- ANALISI QUALITATIVA FALSI POSITIVI (Campione di {sample_size}) ---")
-    
+
     # 1. Troviamo i Falsi Positivi
     false_positives = []
     for email in test_assenti:
@@ -235,7 +181,7 @@ def analyze_false_positives_similarity(bloom_filter, em, dataset_training, test_
             false_positives.append(email)
             if len(false_positives) >= sample_size:
                 break
-    
+
     if not false_positives:
         print("Nessun Falso Positivo trovato da analizzare.")
         return
@@ -247,17 +193,17 @@ def analyze_false_positives_similarity(bloom_filter, em, dataset_training, test_
     for fp_email in false_positives:
         min_dist = float('inf')
         closest_email = ""
-        
+
         for train_email in training_subset:
             dist = levenshtein_distance(fp_email, train_email)
             if dist < min_dist:
                 min_dist = dist
                 closest_email = train_email
                 if min_dist == 1: break # Distanza minima possibile (a parte 0), inutile cercare oltre
-        
+
         print(f"\nFP: '{fp_email}'")
         print(f"   -> Più simile: '{closest_email}' (Distanza: {min_dist})")
-        
+
         if min_dist <= 2:
             print("   -> DIAGNOSI: Molto simile. Probabile collisione dovuta alla struttura dell'hash su input simili.")
         else:
@@ -265,4 +211,4 @@ def analyze_false_positives_similarity(bloom_filter, em, dataset_training, test_
 
 
 if __name__ == "__main__":
-    run_query_benchmark()
+    main()
