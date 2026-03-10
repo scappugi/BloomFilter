@@ -1,9 +1,8 @@
 import time
 from time import perf_counter
-import EmailManager
+from src import EmailManager
+from src import BloomFilter
 import random
-from EmailFilterService import EmailFilterService
-from verify_correctness import TestBloomCorrectness
 import concurrent.futures
 import multiprocessing
 
@@ -43,16 +42,17 @@ def print_bloom_correctness(bloom_filter, dataset_presenti, test_assenti, em, pr
         print(f"ATTENZIONE: FPR troppo alto! Atteso ~{probability}, ottenuto {measured_fpr}")
 
 
-def worker_query(service, emails):
+def worker_query(bloom_filter, em, emails):
     #cuore del codice parallelo, riceve un chunk e verifica la presenza delle email.
     count = 0
     for email in emails:
-        if service.is_email_present(email):
+        normalized = em.normalize_email(email)
+        if bloom_filter.contains(normalized):
             count += 1
     return count
 
 
-def run_query_benchmark_parallel(service, test_presenti, test_assenti, n_threads=None):
+def run_query_benchmark_parallel(bloom_filter, em, test_presenti, test_assenti, n_threads=None):
     if n_threads is None:
         n_threads = multiprocessing.cpu_count()
 
@@ -76,7 +76,7 @@ def run_query_benchmark_parallel(service, test_presenti, test_assenti, n_threads
     start_time = perf_counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
         # Eseguiamo le query in parallelo
-        futures = [executor.submit(worker_query, service, chunk) for chunk in chunks_presenti]
+        futures = [executor.submit(worker_query, bloom_filter, em, chunk) for chunk in chunks_presenti]
         # Attendiamo i risultati (opzionale se ci interessa solo il tempo, ma utile per correttezza)
         results_presenti = sum(f.result() for f in concurrent.futures.as_completed(futures))
     
@@ -85,7 +85,7 @@ def run_query_benchmark_parallel(service, test_presenti, test_assenti, n_threads
     # Test Assenti
     start_time = perf_counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
-        futures = [executor.submit(worker_query, service, chunk) for chunk in chunks_assenti]
+        futures = [executor.submit(worker_query, bloom_filter, em, chunk) for chunk in chunks_assenti]
         results_assenti = sum(f.result() for f in concurrent.futures.as_completed(futures))
     
     tempo_assenti = perf_counter() - start_time
@@ -113,14 +113,16 @@ def run_query_benchmark():
     PROBABILITY = 0.01
 
     print("1. Generazione Dati...")
-    service = EmailFilterService(N_TRAIN, PROBABILITY)
-    em = EmailManager.EmailManager()  # Usato solo qui per generare i dataset di test
+    # Sostituito EmailFilterService con uso diretto
+    em = EmailManager.EmailManager()
+    bf = BloomFilter.BloomFilter.from_probability(N_TRAIN, PROBABILITY)
 
     dataset_training = em.generate_complex_email(N_TRAIN)
 
     print("2. Popolamento del BloomFilter in corso...")
     for raw_email in dataset_training:
-        service.add_email(raw_email)
+        normalized = em.normalize_email(raw_email)
+        bf.add(normalized)
 
     print("3. Preparazione dei dataset di test...")
     test_presenti = random.sample(dataset_training, N_TEST)
@@ -143,13 +145,15 @@ def run_query_benchmark():
     # Test Presenti
     start_time = perf_counter()
     for email in test_presenti:
-        service.is_email_present(email)
+        normalized = em.normalize_email(email)
+        bf.contains(normalized)
     tempo_presenti = perf_counter() - start_time
 
     # Test Assenti
     start_time = perf_counter()
     for email in test_assenti:
-        service.is_email_present(email)
+        normalized = em.normalize_email(email)
+        bf.contains(normalized)
     tempo_assenti = perf_counter() - start_time
 
     # Calcolo metriche
@@ -165,17 +169,17 @@ def run_query_benchmark():
     print(f"   Throughput:    {N_TEST / tempo_assenti:,.0f} query/sec")
     
     print_bloom_correctness(
-        bloom_filter=service.bloom,
+        bloom_filter=bf,
         dataset_presenti=dataset_training,
         test_assenti=test_assenti,
-        em=service.em,
+        em=em,
         probability=PROBABILITY
     )
 
-    run_query_benchmark_parallel(service, test_presenti, test_assenti)
+    run_query_benchmark_parallel(bf, em, test_presenti, test_assenti)
     
     # Analisi qualitativa dei Falsi Positivi
-    analyze_false_positives_similarity(service, dataset_training, test_assenti)
+    analyze_false_positives_similarity(bf, em, dataset_training, test_assenti)
 
 
 def levenshtein_distance(s1, s2):
@@ -198,13 +202,14 @@ def levenshtein_distance(s1, s2):
     return previous_row[-1]
 
 
-def analyze_false_positives_similarity(service, dataset_training, test_assenti, sample_size=5):
+def analyze_false_positives_similarity(bloom_filter, em, dataset_training, test_assenti, sample_size=5):
     print(f"\n--- ANALISI QUALITATIVA FALSI POSITIVI (Campione di {sample_size}) ---")
     
     # 1. Troviamo i Falsi Positivi
     false_positives = []
     for email in test_assenti:
-        if service.is_email_present(email):
+        normalized = em.normalize_email(email)
+        if bloom_filter.contains(normalized):
             false_positives.append(email)
             if len(false_positives) >= sample_size:
                 break

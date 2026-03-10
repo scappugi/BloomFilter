@@ -1,8 +1,6 @@
 import multiprocessing
 import unittest
-import EmailManager
-import BloomFilter
-import orchestrator
+from src import BloomFilter, orchestrator, EmailManager
 
 
 class TestBloomCorrectness(unittest.TestCase):
@@ -20,7 +18,7 @@ class TestBloomCorrectness(unittest.TestCase):
             if email not in self.dataset:
                 self.test_emails.append(email)
 
-    def verify_bloom_properties(self, bf :BloomFilter.BloomFilter):
+    def verify_bloom_properties(self, bf : BloomFilter.BloomFilter):
         false_negatives = 0
         false_positives = 0
         # Verifica assenza di falsi negativi (sul dataset originale)

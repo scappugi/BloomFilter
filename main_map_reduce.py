@@ -1,7 +1,5 @@
 import multiprocessing
-import orchestrator
-import EmailManager  # Importiamo direttamente il gestore
-
+from src import orchestrator, EmailManager
 
 
 def main():
@@ -11,7 +9,7 @@ def main():
     print("Generazione dataset in corso...")
     em = EmailManager.EmailManager()
     dataset = em.generate_complex_email(N_EMAILS)
-    with open("emails_dataset.csv", "w", encoding="utf-8") as f:
+    with open("stuff/emails_dataset.csv", "w", encoding="utf-8") as f:
         for email in dataset:
             f.write(email + "\n")
     print("Dataset generato.")

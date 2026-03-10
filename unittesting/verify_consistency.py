@@ -1,8 +1,6 @@
 import multiprocessing
 import unittest
-import EmailManager
-import BloomFilter
-import orchestrator
+from src import BloomFilter, orchestrator, EmailManager
 
 
 class TestBloomConsistency(unittest.TestCase):
@@ -19,7 +17,7 @@ class TestBloomConsistency(unittest.TestCase):
             self.bf_seq.add(n_email)
 
         self.bit_array = self.bf_seq.get_bit_array()
-        self.orch = orchestrator.BloomOrchestrator(self.n_emails,self.probability,self.num_workers)
+        self.orch = orchestrator.BloomOrchestrator(self.n_emails, self.probability, self.num_workers)
 
     def test_joblib_shared_consistency(self):
         print(f"\n\nTesting Joblib NumPy (Workers: {self.num_workers})...")

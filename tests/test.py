@@ -1,22 +1,33 @@
 import os
+import sys
 import time
 import multiprocessing
-from time import perf_counter
 
-import BloomFilter
-import EmailManager
-import orchestrator
+# --- Inizio Blocco di Correzione Percorsi ---
+# Aggiunge la root del progetto al sys.path per rendere gli import robusti
+# Questo permette di eseguire lo script da qualsiasi directory
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+# --- Fine Blocco di Correzione Percorsi ---
+
+from src import BloomFilter, orchestrator, EmailManager
 import csv
-import plot_utils
+from tests import plot_utils
+
+# Definiamo la directory dei dati in modo robusto
+DATA_DIR = os.path.join(project_root, "data")
 
 def load_dataset_from_csv(filename):
-    if not os.path.exists(filename):
-        print(f" ERRORE: Il file {filename} non esiste. Esegui prima 'generate_datasets.py'.")
+    # Costruisce il percorso completo al file di dati
+    full_path = os.path.join(DATA_DIR, os.path.basename(filename))
+
+    if not os.path.exists(full_path):
+        print(f" ERRORE: Il file {full_path} non esiste. Esegui prima 'scripts/generate_datasets.py'.")
         return None
 
-    print(f"Caricamento {filename} in memoria...", end="", flush=True)
+    print(f"Caricamento {full_path} in memoria...", end="", flush=True)
     dataset = []
-    with open(filename, newline="", encoding="utf-8") as f:
+    with open(full_path, newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
         next(reader, None)  # Salta header se presente
         for row in reader:
@@ -262,12 +273,16 @@ def compare_performance(bf_seq, bf_par, bf_par_shared, bf_job, bf_job_sh, traini
 
 def main():
     PROBABILITY = 0.01
+    # Ora i nomi dei file non hanno più il prefisso 'data/'
     DATASETS_FILES = ["dataset_10k.csv","dataset_100k.csv","dataset_500k.csv", "dataset_1.5m.csv", "dataset_3m.csv", "dataset_5m.csv", "dataset_10m.csv"]
 
     print(f"--- BENCHMARK AUTOMATICO (CPU Cores: {multiprocessing.cpu_count()}) ---")
 
-    dt = ["dataset_500k.csv", ]
-    dt1 = load_dataset_from_csv("dataset_500k.csv")
+    dt1 = load_dataset_from_csv("dataset_10k.csv")
+    if dt1 is None:
+        print("Impossibile eseguire il test preliminare, dataset non trovato.")
+        return
+
     bf_seq, t_seq = run_sequential(dt1, len(dt1), PROBABILITY)
     bf_par, t_par = run_parallel(dt1, len(dt1), PROBABILITY, 8)
     print(f"lunghezza del bitarray {bf_par.bit_array.count()}") #Bit a 1: 2477441
@@ -351,4 +366,3 @@ def main():
 if __name__ == "__main__":
     multiprocessing.freeze_support()
     main()
-

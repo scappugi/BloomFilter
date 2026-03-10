@@ -1,7 +1,6 @@
 import csv
 
-import BloomFilter
-import EmailManager
+from src import BloomFilter, EmailManager
 
 emailManager = EmailManager.EmailManager()
 # with open("emails_normalizzate.csv", "w", newline="", encoding="utf-8") as f:
@@ -18,7 +17,7 @@ bloom = BloomFilter.BloomFilter.from_probability(n=500000, p=0.01)
 
 # Inserimento delle email nel Bloom Filter
 emails_inserted_set = set()
-with open("emails_normalizzate.csv", newline="", encoding="utf-8") as f:
+with open("stuff/emails_normalizzate.csv", newline="", encoding="utf-8") as f:
     reader = csv.reader(f)
     next(reader)  # salta l'header
     for row in reader:
@@ -32,7 +31,7 @@ true_positives = 0
 false_positives = 0
 
 # Apriamo il CSV dove salvare le TP
-with open("tp_emails.csv", "w", newline="", encoding="utf-8") as tp_file:
+with open("stuff/tp_emails.csv", "w", newline="", encoding="utf-8") as tp_file:
     writer = csv.writer(tp_file)
     writer.writerow(["email"])  # header
 

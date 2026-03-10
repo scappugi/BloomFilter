@@ -1,16 +1,12 @@
 import os
 import time
-import multiprocessing
 import sys
 import matplotlib.pyplot as plt
-import csv
 
-import BloomFilter
-import EmailManager
-import orchestrator
+from src import orchestrator, EmailManager
 
 # Importiamo alcune utility da test.py per evitare duplicazioni
-from test import load_dataset_from_csv, run_sequential, evaluate_filter
+from tests.test import load_dataset_from_csv, run_sequential, evaluate_filter
 
 def run_threaded_merge(dataset, n, p, n_threads):
     """

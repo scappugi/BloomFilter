@@ -1,9 +1,10 @@
 import csv
 import time
-import os
-import EmailManager
+from src import EmailManager
 
 
+######## Dopo alcune modifiche è possibile usare questo generatore solo dopo aver creato i file scritti nel "dataset"
+######## - crea la cartella "data" e inserisci i file con il nome corretto. Poi avvia questo script.
 def generate_csv(filename, num_emails):
     print(f"[*] Inizio generazione {num_emails} email per {filename}...")
     start = time.time()
@@ -27,8 +28,8 @@ def generate_csv(filename, num_emails):
 if __name__ == "__main__":
     # Configurazioni richieste
     datasets = [
-        ("dataset_10k.csv", 10_000),
-        ("dataset_100k.csv", 100_000),
+        ("data/dataset_10k.csv", 10_000),
+        ("data/dataset_100k.csv", 100_000),
         ("dataset_500k.csv", 500_000),
         ("dataset_1.5m.csv", 1_500_000),
         ("dataset_3m.csv", 3_000_000),

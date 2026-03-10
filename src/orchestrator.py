@@ -1,16 +1,12 @@
-import sys
-
 from bitarray import bitarray
 
-import BloomFilter
+from src import BloomFilter
 import multiprocessing
-import worker
+from src import worker
 from joblib import Parallel, delayed
 from multiprocessing import shared_memory
 import numpy as np
 import concurrent.futures
-
-from worker import toShare
 
 
 class BloomOrchestrator:

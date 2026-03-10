@@ -3,14 +3,12 @@ import csv
 import time
 import sys
 import os
-from asyncio import wait
 
 import numpy as np
 from bitarray import bitarray
 
-import EmailManager
-import BloomFilter
-from test import run_sequential
+from src import BloomFilter, EmailManager
+from tests.test import run_sequential
 
 PROBABILITY = 0.01
 _bf_params = None  # (m, k)
@@ -143,7 +141,7 @@ def run_full_test():
 
 
 def main():
-    dt1 = load_dataset_from_csv("dataset_500k.csv")
+    dt1 = load_dataset_from_csv("data/dataset_500k.csv")
     #bf_seq, t_seq = run_sequential(dt1, len(dt1), PROBABILITY)
 
     print(f"--- BLOOM FILTER PY {sys.version.split()[0]} + BYTEARRAY ---")
@@ -151,7 +149,7 @@ def main():
     gil_status = "DISATTIVATO" if hasattr(sys, "_is_gil_enabled") and not sys._is_gil_enabled() else "ATTIVO"
     print(f"Stato GIL: {gil_status}")
 
-    filename = "dataset_10m.csv"
+    filename = "data/dataset_10m.csv"
     dataset = load_dataset_from_csv(filename)
     if dataset is None: return
 

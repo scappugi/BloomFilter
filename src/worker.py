@@ -1,7 +1,5 @@
-import mmh3
-
-import BloomFilter
-import EmailManager
+from src import BloomFilter
+from src import EmailManager
 from bitarray import bitarray
 import numpy as np
 from multiprocessing import shared_memory
