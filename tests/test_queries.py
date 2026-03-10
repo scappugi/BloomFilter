@@ -5,6 +5,7 @@ from src import BloomFilter
 import random
 import concurrent.futures
 import multiprocessing
+import sys
 
 def print_bloom_correctness(bloom_filter, dataset_presenti, test_assenti, em, probability):
 
@@ -53,6 +54,27 @@ def worker_query(bloom_filter, em, emails):
 
 
 def run_query_benchmark_parallel(bloom_filter, em, test_presenti, test_assenti, n_threads=None):
+    
+    # --- Controllo GIL ---
+    gil_enabled = True
+    if hasattr(sys, "_is_gil_enabled"):
+        if not sys._is_gil_enabled():
+            gil_enabled = False
+    
+    # Se il GIL è attivo, chiediamo conferma
+    if gil_enabled:
+        print("\n" + "!"*60)
+        print(" ATTENZIONE: Il GIL (Global Interpreter Lock) risulta ATTIVO.")
+        print(" L'esecuzione parallela con i thread potrebbe non portare benefici")
+        print(" o addirittura essere più lenta a causa dell'overhead.")
+        print("!"*60)
+        
+        risposta = input("Vuoi procedere comunque con il benchmark parallelo? [y/N]: ").strip().lower()
+        if risposta not in ['y', 'yes', 's', 'si']:
+            print("Benchmark parallelo annullato dall'utente.")
+            return
+    # ---------------------
+
     if n_threads is None:
         n_threads = multiprocessing.cpu_count()
 

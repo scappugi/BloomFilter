@@ -51,9 +51,6 @@ def main():
         choices=["process", "threading", "query", "all"],
         help="Modalità di esecuzione: 'construction' (processi), 'threading' (thread), 'query' (interrogazioni), 'all' (tutto)"
     )
-    
-    # Argomenti opzionali futuri (es. dataset custom)
-    # parser.add_argument("--dataset", help="Percorso del dataset CSV da usare", default=None)
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
