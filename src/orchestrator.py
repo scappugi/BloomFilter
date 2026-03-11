@@ -127,7 +127,9 @@ class BloomOrchestrator:
             Parallel(n_jobs=self.num_workers)(
                 delayed(worker.process_joblib_shared)(chunk, m, k, shm.name, 'int8') for chunk in chunks
             )
-            self.bloom.bit_array = bit_array.tolist()
+            final_bloom = bitarray()
+            final_bloom.extend(bit_array)
+            self.bloom.bit_array = final_bloom
 
         finally:
             shm.close()

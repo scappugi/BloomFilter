@@ -8,6 +8,8 @@ import random
 import concurrent.futures
 import multiprocessing
 import sys
+from multiprocessing import shared_memory
+import numpy as np
 
 def print_bloom_correctness(bloom_filter, dataset_presenti, test_assenti, em, probability):
 
@@ -43,7 +45,27 @@ def print_bloom_correctness(bloom_filter, dataset_presenti, test_assenti, em, pr
         print("FPR entro la tolleranza prevista.")
     else:
         print(f"ATTENZIONE: FPR troppo alto! Atteso ~{probability}, ottenuto {measured_fpr}")
+def worker_query_shared(shm_name, em, m, k, emails):
+    shm = shared_memory.SharedMemory(name=shm_name)
+    shared_array = np.ndarray(shape=(m,), dtype=np.uint8, buffer=shm.buf)
+    count = 0
 
+    try:
+        for raw_email in emails:
+            email = em.normalize_email(raw_email)
+            indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
+            presente = True
+            for idx in indices:
+                if shared_array[idx] == 0:
+                    presente = False
+                    break
+
+            if presente:
+                count += 1
+    finally:
+        shm.close()
+
+    return count
 
 def worker_query(bloom_filter, em, emails):
     """Worker per eseguire query in parallelo."""
@@ -55,18 +77,6 @@ def worker_query(bloom_filter, em, emails):
     return count
 
 def run_query_benchmark_parallel(bloom_filter, em, test_presenti, test_assenti, n_threads=None):
-    # --- Controllo GIL ---
-    gil_enabled = not hasattr(sys, "_is_gil_enabled") or sys._is_gil_enabled()
-    if gil_enabled:
-        print("\n" + "!"*60)
-        print(" ATTENZIONE: Il GIL (Global Interpreter Lock) risulta ATTIVO.")
-        print(" L'esecuzione parallela con i thread potrebbe non portare benefici.")
-        print("!"*60)
-        risposta = input("Vuoi procedere comunque? [y/N]: ").strip().lower()
-        if risposta not in ['y', 'yes', 's', 'si']:
-            print("Benchmark parallelo annullato.")
-            return
-    # ---------------------
 
     if n_threads is None:
         n_threads = multiprocessing.cpu_count()
@@ -95,10 +105,61 @@ def run_query_benchmark_parallel(bloom_filter, em, test_presenti, test_assenti, 
     tempo_assenti = perf_counter() - start_time
 
     N_TEST = len(test_presenti)
-    print(f"A) Elementi PRESENTI (Parallelo):")
-    print(f"   Throughput:    {N_TEST / tempo_presenti:,.0f} query/sec")
-    print(f"\nB) Elementi ASSENTI (Parallelo):")
-    print(f"   Throughput:    {N_TEST / tempo_assenti:,.0f} query/sec")
+    thr_presenti = N_TEST / tempo_presenti
+    thr_assenti = N_TEST / tempo_assenti
+
+    return thr_presenti, thr_assenti
+
+
+def run_query_benchmark_shared_memory(bloom_filter: BloomFilter.BloomFilter, em, test_presenti, test_assenti, n_process=None):
+    if n_process is None:
+        n_process = multiprocessing.cpu_count()
+    print(f"\n--- AVVIO BENCHMARK PARALLELO ({n_process} Process) ---")
+    m = bloom_filter.get_size()
+    k = bloom_filter.get_hash_count()
+    dtype = np.int8
+    size_in_bytes = m * np.dtype(dtype).itemsize
+    shm = shared_memory.SharedMemory(create=True, size=size_in_bytes)
+
+    try:
+        bit_array = np.ndarray(shape = (m,), dtype = dtype, buffer = shm.buf)
+        bit_array.fill(0)
+        bit_array[:] = bloom_filter.bit_array.tolist()
+
+        def split_list(lst, n):
+            step, r = divmod(len(lst), n)
+            return [lst[i * step + min(i, r):(i + 1) * step + min(i + 1, r)] for i in range(n)]
+
+        chunks_presenti = split_list(test_presenti, n_process)
+        chunks_assenti = split_list(test_assenti, n_process)
+
+        start_time = perf_counter()
+        with concurrent.futures.ProcessPoolExecutor(max_workers=n_process) as executor:
+            futures = [executor.submit(worker_query_shared, shm.name,em, m,k,chunk) for chunk in chunks_presenti]
+            sum(f.result() for f in concurrent.futures.as_completed(futures))
+        tempo_presenti = perf_counter() - start_time
+
+        start_time = perf_counter()
+        with concurrent.futures.ProcessPoolExecutor(max_workers=n_process) as executor:
+            futures = [executor.submit(worker_query_shared, shm.name,em, m,k,chunk) for chunk in chunks_assenti]
+            sum(f.result() for f in concurrent.futures.as_completed(futures))
+        tempo_assenti = perf_counter() - start_time
+
+        N_TEST = len(test_presenti)
+        thr_presenti = N_TEST / tempo_presenti
+        thr_assenti = N_TEST / tempo_assenti
+
+        return thr_presenti, thr_assenti
+
+    finally:
+        shm.close()
+        shm.unlink()
+
+
+
+
+
+
 
 def run_query_benchmark_sequential(bf, em, test_presenti, test_assenti):
     print("\n--- AVVIO BENCHMARK (Sequenziale) ---")
@@ -116,11 +177,10 @@ def run_query_benchmark_sequential(bf, em, test_presenti, test_assenti):
     tempo_assenti = perf_counter() - start_time
 
     N_TEST = len(test_presenti)
+    thr_presenti = N_TEST / tempo_presenti
+    thr_assenti = N_TEST / tempo_assenti
 
-    print(f"A) Elementi PRESENTI:")
-    print(f"   Throughput:    {N_TEST / tempo_presenti:,.0f} query/sec")
-    print(f"\nB) Elementi ASSENTI:")
-    print(f"   Throughput:    {N_TEST / tempo_assenti:,.0f} query/sec")
+    return thr_presenti, thr_assenti
 
 
 def main():
@@ -142,9 +202,49 @@ def main():
     dataset_set = set(dataset_training)
     test_assenti = [c for c in em.generate_complex_email(N_TEST * 2) if c not in dataset_set][:N_TEST]
 
-    run_query_benchmark_sequential(bf, em, test_presenti, test_assenti)
+    seq_pres, seq_ass = run_query_benchmark_sequential(bf, em, test_presenti, test_assenti)
 
-    run_query_benchmark_parallel(bf, em, test_presenti, test_assenti)
+    worker_counts = [1, 2, 4, 8, 16]
+    risultati_thread = {}
+    risultati_process = {}
+
+    for w in worker_counts:
+        print(f"  -> Esecuzione con {w} worker...", end="\r", flush=True)
+
+        # Test Thread
+        gil_enabled = not hasattr(sys, "_is_gil_enabled") or sys._is_gil_enabled()
+        if gil_enabled:
+            th_pres, th_ass = None, None
+        else:
+            th_pres, th_ass = run_query_benchmark_parallel(bf, em, test_presenti, test_assenti, n_threads=w)
+
+        risultati_thread[w] = (th_pres, th_ass)
+
+        # Test Process (Shared Memory)
+        pr_pres, pr_ass = run_query_benchmark_shared_memory(bf, em, test_presenti, test_assenti, n_process=w)
+        risultati_process[w] = (pr_pres, pr_ass)
+
+    print("  -> Esecuzione completata!                        \n")
+
+    print("=" * 90)
+    print(f"{'RIEPILOGO THROUGHPUT (Query al secondo)':^90}")
+    print("=" * 90)
+    print(f"{'Baseline Sequenziale':<25} | Presenti: {seq_pres:,.0f} q/s | Assenti: {seq_ass:,.0f} q/s")
+    print("-" * 90)
+
+    print(
+        f"{'Worker':<6} | {'Thread (Presenti)':<20} | {'Thread (Assenti)':<20} | {'Process (Presenti)':<20} | {'Process (Assenti)':<20}")
+    print("-" * 90)
+
+    for w in worker_counts:
+        th_p, th_a = risultati_thread[w]
+        pr_p, pr_a = risultati_process[w]
+
+        str_th_p = f"{th_p:<20,.0f}" if th_p is not None else f"{'N/A (GIL)':<20}"
+        str_th_a = f"{th_a:<20,.0f}" if th_a is not None else f"{'N/A (GIL)':<20}"
+
+        print(f"{w:<6} | {str_th_p} | {str_th_a} | {pr_p:<20,.0f} | {pr_a:<20,.0f}")
+    print("=" * 90)
 
     # Analisi qualitativa dei Falsi Positivi
     analyze_false_positives_similarity(bf, em, dataset_training, test_assenti)
