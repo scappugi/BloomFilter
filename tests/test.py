@@ -52,9 +52,9 @@ def run_parallel(dataset, n, p, np = multiprocessing.cpu_count()):
     bf = None
     for i in range(n_runs):
         print (f"\n Esecuzione MapReduce n: {i}", end="", flush=True)
-        start = time.time()
+        start = time.perf_counter()
         bf = orch.process_chunks(dataset)
-        end = time.time()
+        end = time.perf_counter()
         avg_times.append(end - start)
     avg_time = sum(avg_times) / len(avg_times)
     print(f"\n Tempo medio: {avg_time:.4f}s")
@@ -68,10 +68,10 @@ def run_parallel_shared_memory(dataset, n, p, np = multiprocessing.cpu_count()):
     bf = None
     for i in range(n_runs):
         print (f"\n Esecuzione Shared Mem {i}", end="", flush=True)
-        start = time.time()
+        start = time.perf_counter()
         chunk = orch.split_data(dataset)
         bf = orch.run_worker(chunk)
-        end = time.time()
+        end = time.perf_counter()
         avg_times.append(end - start)
     avg_time = sum(avg_times) / len(avg_times)
     print(f"\n Tempo medio: {avg_time:.4f}s")
@@ -85,9 +85,9 @@ def run_parallel_joblib(dataset, n, p, np = multiprocessing.cpu_count()):
     bf = None
     for i in range(n_runs):
         print (f"\n Esecuzione Joblib n: {i}", end="", flush=True)
-        start = time.time()
+        start = time.perf_counter()
         bf = orch.run_joblib_worker(dataset)
-        end = time.time()
+        end = time.perf_counter()
         avg_times.append(end - start)
     avg_time = sum(avg_times) / len(avg_times)
     print(f"\n Tempo medio: {avg_time:.4f}s")
@@ -101,9 +101,9 @@ def run_parallel_joblib_shared(dataset, n, p, np = multiprocessing.cpu_count()):
     bf = None
     for i in range(n_runs):
         print (f"\n Esecuzione Joblib Shared Mem n: {i}", end="", flush=True)
-        start = time.time()
+        start = time.perf_counter()
         bf = orch.run_joblib_shared_worker(dataset)
-        end = time.time()
+        end = time.perf_counter()
         avg_times.append(end - start)
     avg_time = sum(avg_times) / len(avg_times)
     print(f"\n Tempo medio: {avg_time:.4f}s")
