@@ -12,19 +12,34 @@ if project_root not in sys.path:
 from src import BloomFilter, orchestrator, EmailManager
 from tests import test_utils
 
+
 def run_sequential(dataset, n, p):
     print(f"\n\n[Sequenziale] Iniziato...", end="", flush=True)
     bf = BloomFilter.BloomFilter.from_probability(n, p)
     em = EmailManager.EmailManager()
+
+    # 1. Caching per eliminare il Function Call Overhead
+    calc_hashes = BloomFilter.BloomFilter.calculate_hashes
+    m = bf.m
+    k = bf.k
+    bit_array = bf.bit_array
+
     avg_times = []
     n_runs = 3
     for _ in range(n_runs):
         start = time.perf_counter()
+
+        # 2. Ciclo piatto utilizzando la TUA funzione calculate_hashes
         for raw_email in dataset:
             email = em.normalize_email(raw_email)
-            bf.add(email)
+
+            # Uguale identico al worker joblib!
+            for idx in calc_hashes(email, m, k):
+                bit_array[idx] = 1
+
         end = time.perf_counter()
         avg_times.append(end - start)
+
     avg_time = sum(avg_times) / len(avg_times)
     print(f"\n Tempo medio: {avg_time:.4f}s")
     return bf, avg_time

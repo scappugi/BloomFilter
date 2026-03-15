@@ -133,14 +133,16 @@ def run_query_benchmark_shared_memory(bloom_filter: BloomFilter.BloomFilter, em,
         chunks_presenti = split_list(test_presenti, n_process)
         chunks_assenti = split_list(test_assenti, n_process)
 
-        start_time = perf_counter()
+
         with concurrent.futures.ProcessPoolExecutor(max_workers=n_process) as executor:
+            start_time = perf_counter()
             futures = [executor.submit(worker_query_shared, shm.name,em, m,k,chunk) for chunk in chunks_presenti]
             sum(f.result() for f in concurrent.futures.as_completed(futures))
         tempo_presenti = perf_counter() - start_time
 
-        start_time = perf_counter()
+
         with concurrent.futures.ProcessPoolExecutor(max_workers=n_process) as executor:
+            start_time = perf_counter()
             futures = [executor.submit(worker_query_shared, shm.name,em, m,k,chunk) for chunk in chunks_assenti]
             sum(f.result() for f in concurrent.futures.as_completed(futures))
         tempo_assenti = perf_counter() - start_time
@@ -154,12 +156,6 @@ def run_query_benchmark_shared_memory(bloom_filter: BloomFilter.BloomFilter, em,
     finally:
         shm.close()
         shm.unlink()
-
-
-
-
-
-
 
 def run_query_benchmark_sequential(bf, em, test_presenti, test_assenti):
     print("\n--- AVVIO BENCHMARK (Sequenziale) ---")
