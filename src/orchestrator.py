@@ -27,7 +27,7 @@ class BloomOrchestrator:
         elif arg >= 1 and isinstance(arg, int):
             self.bloom = BloomFilter.BloomFilter.from_number_of_hashes(self.n_total, arg)
 
-
+#    @profile
     def process_chunks(self, raw_datasets, num_factors=4):
 
         """
@@ -68,25 +68,27 @@ class BloomOrchestrator:
         return chunks
 
 #metodo per la gestione di un caso di memory shared
-    def run_worker(self, chunks):
-        shared_bit_array = multiprocessing.Array('b', self.bloom.m , lock = False)
+#    @profile
+    def run_worker(self, raw_datasets, num_factors=4):
+        chunks = self.split_data(raw_datasets, num_factors)
+        shared_bit_array = multiprocessing.Array('b', self.bloom.m, lock=False)
         args = [(chunk, self.bloom.m, self.bloom.k) for chunk in chunks]
         with multiprocessing.Pool(initializer=worker.init_worker_shared,
                                   initargs=(shared_bit_array,),
                                   processes=self.num_workers) as pool:
             pool.map(worker.process_chunk_shared, args)
 
-        final_bloom = bitarray()
-        final_bloom.extend(shared_bit_array)
+            arr_view = np.frombuffer(shared_bit_array, dtype=np.uint8)
+            packed_bytes = np.packbits(arr_view, bitorder='big')
+            final_bloom = bitarray()
+            final_bloom.frombytes(packed_bytes.tobytes())
+
+            final_bloom = final_bloom[:self.bloom.m]
         self.bloom.bit_array = final_bloom
         return self.bloom
 
     def run_joblib_worker(self, raw_datasets, num_factors=4):
-        total_items = len(raw_datasets)
-        num_chunks = self.num_workers * num_factors
-        chunk_size = max(1, total_items // num_chunks)
-        chunks = [raw_datasets[i:i + chunk_size] for i in range(0, total_items, chunk_size)]
-
+        chunks = self.split_data(raw_datasets, num_factors)
         m = self.bloom.get_size()
         k = self.bloom.get_hash_count()
         args = [(chunk, m, k) for chunk in chunks]
@@ -107,10 +109,7 @@ class BloomOrchestrator:
         return self.bloom
 
     def run_joblib_shared_worker(self, raw_datasets, num_factors=4):
-        total_items = len(raw_datasets)
-        num_chunks = self.num_workers * num_factors
-        chunk_size = max(1, total_items // num_chunks)
-        chunks = [raw_datasets[i:i + chunk_size] for i in range(0, total_items, chunk_size)]
+        chunks = self.split_data(raw_datasets, num_factors)
 
         #shared_bit_array = multiprocessing.Array('b', self.bloom.m , lock = False)
 

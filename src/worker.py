@@ -1,3 +1,5 @@
+import time
+
 from src import BloomFilter
 from src import EmailManager
 from bitarray import bitarray
@@ -14,34 +16,49 @@ def init_worker_shared(shared_array):
     toShare = shared_array
 
 # Metodo per Mapper
+#@profile
 def process_chunk(args):
     raw_emails_chunk, m, k = args
     all_indices = bitarray(m)
     all_indices.setall(0)
+    time_writing = 0.0
 
     # Per ogni email nel pacchetto
     for raw_email in raw_emails_chunk:
         # Normalizza l'email
         email = _email_manager.normalize_email(raw_email)
         indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
+        t0 = time.perf_counter()
         # Aggiorna l'array di bit locale
         for index in indices:
             all_indices[index] = 1
+        t1 = time.perf_counter()
+        time_writing += t1 - t0
+
 
     # Ritorna l'array di bit locale (seriealizzazione piu veloce di una classica lista)
+    print(f"[Worker Locale] Scrittura bitarray: {time_writing:.4f}s")
     return all_indices
 
-
+#@profile
 def process_chunk_shared(args):
     raw_emails_chunk, m, k = args
     local_array = toShare #ottiene il riferimento all'array di bit condiviso
+    time_writing = 0.0
+
     # Per ogni email nel pacchetto
     for raw_email in raw_emails_chunk:
         email = _email_manager.normalize_email(raw_email)
         indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
         # Aggiorna l'array di bit condiviso
+        t0 = time.perf_counter()
         for index in indices:
             toShare[index] = 1
+        t1 = time.perf_counter()
+        time_writing += t1 - t0
+    print(f"[Worker Condiviso] Scrittura bytearray: {time_writing:.4f}s")
+
+
 
 
 def process_joblib_standard(chunk, m, k):

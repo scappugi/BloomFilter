@@ -69,8 +69,7 @@ def run_parallel_shared_memory(dataset, n, p, np = multiprocessing.cpu_count()):
     for i in range(n_runs):
         print (f"\n Esecuzione Shared Mem {i}", end="", flush=True)
         start = time.perf_counter()
-        chunk = orch.split_data(dataset)
-        bf = orch.run_worker(chunk)
+        bf = orch.run_worker(dataset)
         end = time.perf_counter()
         avg_times.append(end - start)
     avg_time = sum(avg_times) / len(avg_times)
