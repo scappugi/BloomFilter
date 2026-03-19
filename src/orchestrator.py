@@ -1,5 +1,3 @@
-import time
-
 from bitarray import bitarray
 
 from src import BloomFilter
@@ -162,93 +160,42 @@ class BloomOrchestrator:
         return self.bloom
 
     def run_threaded_worker(self, raw_datasets, num_factors=4):
-        # 1. Start totale
-        t_0 = time.perf_counter()
 
-        # 2. Setup dati (Splitting e argomenti)
         chunks = self.split_data(raw_datasets, num_factors)
         m = self.bloom.get_size()
         k = self.bloom.get_hash_count()
         args = [(chunk, m, k) for chunk in chunks]
-        t_1 = time.perf_counter()
 
-        # 3. Esecuzione Multi-Thread (Calcolo Hash parallelo)
-        t_2 = time.perf_counter()
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-            # Otteniamo la lista di bitarray locali dai thread
             results = list(executor.map(worker.process_thread, args))
-        t_3 = time.perf_counter()
+            final_bitarray = bitarray(self.bloom.m)
+            final_bitarray.setall(0)
+            for ba in results:
+                final_bitarray |= ba
 
-        # 4. Inizializzazione Bitarray Globale
-        t_4 = time.perf_counter()
-        final_bitarray = bitarray(self.bloom.m)
-        final_bitarray.setall(0)
-
-        # 5. Fase di Merge (OR logico tra i risultati dei thread)
-        for ba in results:
-            final_bitarray |= ba
-
-        self.bloom.bit_array = final_bitarray
-        t_5 = time.perf_counter()
-
-        # --- REPORT DI PROFILAZIONE ---
-        print(f"\n{'=' * 45}")
-        print(f" REPORT PROFILAZIONE MANUALE (Threaded Merge)")
-        print(f"{'=' * 45}")
-        print(f"1. Setup & Split:        {(t_1 - t_0) * 1000:10.2f} ms")
-        print(f"2. Calcolo Thread (Map): {(t_3 - t_2) * 1000:10.2f} ms (CORE WORK)")
-        print(f"3. Init Global Array:    {(t_4 - t_3) * 1000:10.2f} ms")
-        print(f"4. Merge (OR logico):    {(t_5 - t_4) * 1000:10.2f} ms (REDUCE)")
-        print(f"{'-' * 45}")
-        print(f"TEMPO TOTALE:            {(t_5 - t_0) * 1000:10.2f} ms")
-        print(f"{'=' * 45}\n")
-
+            self.bloom.bit_array = final_bitarray
         return self.bloom
 
     def run_threaded_shared(self, raw_datasets, num_factors=4):
-        # 1. Start totale
-        t_0 = time.perf_counter()
 
-        # 2. Setup dati (Splitting e argomenti)
         chunks = self.split_data(raw_datasets, num_factors)
         m = self.bloom.get_size()
         k = self.bloom.get_hash_count()
         args = [(chunk, m, k) for chunk in chunks]
-        t_1 = time.perf_counter()
 
-        # 3. Allocazione Memoria Condivisa (NumPy)
-        # In 3.14 i thread vedono lo stesso spazio di indirizzamento nativamente
+        # Inizializza l'array condiviso
+        # Usiamo uint8 per simulare bytearray/boolean array
         shared_array = np.zeros(m, dtype=np.uint8)
         worker.toShare = shared_array
-        t_2 = time.perf_counter()
 
         try:
-            # 4. Esecuzione Multi-Thread (Il cuore del calcolo)
-            t_3 = time.perf_counter()
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-                # list() forza l'esecuzione immediata di tutte le iterazioni dell'executor
                 list(executor.map(worker.process_thread_shared, args))
-            t_4 = time.perf_counter()
 
-            # 5. Conversione Finale (Il possibile collo di bottiglia)
-            t_5 = time.perf_counter()
-            # Nota: tolist() + bitarray() è molto oneroso per filtri grandi
+            # Converti il risultato numpy in bitarray per il bloom filter
             self.bloom.bit_array = bitarray(shared_array.tolist())
-            t_6 = time.perf_counter()
 
         finally:
             worker.toShare = None
-
-        # --- REPORT DI PROFILAZIONE ---
-        print(f"\n{'=' * 40}")
-        print(f" REPORT PROFILAZIONE MANUALE (Shared Thread)")
-        print(f"{'=' * 40}")
-        print(f"1. Setup & Split:      {(t_1 - t_0) * 1000:10.2f} ms")
-        print(f"2. Allocazione NumPy:  {(t_2 - t_1) * 1000:10.2f} ms")
-        print(f"3. Calcolo Thread:     {(t_4 - t_3) * 1000:10.2f} ms (CORE WORK)")
-        print(f"4. Conversione Final:  {(t_6 - t_5) * 1000:10.2f} ms (ATTENZIONE QUI)")
-        print(f"{'-' * 40}")
-        print(f"TEMPO TOTALE:          {(t_6 - t_0) * 1000:10.2f} ms")
-        print(f"{'=' * 40}\n")
 
         return self.bloom
