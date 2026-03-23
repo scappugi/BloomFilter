@@ -56,7 +56,7 @@ def process_chunk_shared(args):
             toShare[index] = 1
         t1 = time.perf_counter()
         time_writing += t1 - t0
-    print(f"[Worker Condiviso] Scrittura bytearray: {time_writing:.4f}s")
+    #print(f"[Worker Condiviso] Scrittura bytearray: {time_writing:.4f}s")
 
 
 

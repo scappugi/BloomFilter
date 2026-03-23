@@ -1,3 +1,5 @@
+import time
+
 from bitarray import bitarray
 
 from src import BloomFilter
@@ -177,14 +179,15 @@ class BloomOrchestrator:
         return self.bloom
 
     def run_threaded_shared(self, raw_datasets, num_factors=4):
-
+        """
+        Esegue il Bloom Filter in ambiente Python 3.14 (Free-Threaded)
+        utilizzando un array NumPy condiviso tra i thread.
+        """
         chunks = self.split_data(raw_datasets, num_factors)
         m = self.bloom.get_size()
         k = self.bloom.get_hash_count()
         args = [(chunk, m, k) for chunk in chunks]
 
-        # Inizializza l'array condiviso
-        # Usiamo uint8 per simulare bytearray/boolean array
         shared_array = np.zeros(m, dtype=np.uint8)
         worker.toShare = shared_array
 
@@ -192,8 +195,12 @@ class BloomOrchestrator:
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
                 list(executor.map(worker.process_thread_shared, args))
 
-            # Converti il risultato numpy in bitarray per il bloom filter
-            self.bloom.bit_array = bitarray(shared_array.tolist())
+            packed_bytes = np.packbits(shared_array, bitorder='big')
+
+            final_bloom_bits = bitarray()
+            final_bloom_bits.frombytes(packed_bytes.tobytes())
+
+            self.bloom.bit_array = final_bloom_bits[:m]
 
         finally:
             worker.toShare = None

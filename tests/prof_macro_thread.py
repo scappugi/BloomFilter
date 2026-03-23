@@ -9,7 +9,9 @@ if project_root not in sys.path:
 import test_utils
 from src import orchestrator
 
-
+################################################################
+#RECUPERARE IL CODICE PER PROFILARE LE FUNZIONI SU GITHUB
+################################################################
 def run_macro_profiling():
     # Usiamo 500k o 1.5m per avere dati solidi
     filename = "dataset_500k.csv"

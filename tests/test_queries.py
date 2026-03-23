@@ -180,8 +180,8 @@ def run_query_benchmark_sequential(bf, em, test_presenti, test_assenti):
 
 
 def main():
-    N_TRAIN = 500000
-    N_TEST = 100000
+    N_TRAIN = 300000
+    N_TEST = 75000
     PROBABILITY = 0.01
 
     print("1. Generazione Dati...")
