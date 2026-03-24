@@ -191,75 +191,127 @@ class BloomOrchestrator:
     ###############################################################################################################
 
     def run_threaded_worker_bytearray(self, raw_datasets, num_factors=4):
+        t_0 = time.perf_counter()
 
         chunks = self.split_data(raw_datasets, num_factors)
         m = self.bloom.get_size()
         k = self.bloom.get_hash_count()
         args = [(chunk, m, k) for chunk in chunks]
+        t_1 = time.perf_counter()
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+            t_2 = time.perf_counter()
             results = list(executor.map(worker.process_thread_bytearray, args))
-            final_array = np.zeros(self.bloom.m, dtype=np.uint8)
+            t_3 = time.perf_counter()
 
+            # 1. Merge Vettorizzato NumPy
+            t_4 = time.perf_counter()
+            final_array = np.zeros(self.bloom.m, dtype=np.uint8)
             for ba in results:
                 arr_view = np.frombuffer(ba, dtype=np.uint8)
                 np.bitwise_or(final_array, arr_view, out=final_array)
-            
-            # Conversione finale e assegnazione
-            #self.bloom.bit_array = bitarray(final_array.tolist())
+            t_5 = time.perf_counter()
 
+            # 2. Conversione finale
+            t_6 = time.perf_counter()
             packed_bytes = np.packbits(final_array, bitorder='big')
-
             final_bloom_bits = bitarray()
             final_bloom_bits.frombytes(packed_bytes.tobytes())
-
             self.bloom.bit_array = final_bloom_bits[:m]
+            t_7 = time.perf_counter()
+
+        print(f"\n{'=' * 45}")
+        print(f" REPORT PROFILAZIONE: THREADED MERGE (BYTEARRAY)")
+        print(f"{'=' * 45}")
+        print(f"1. Setup & Split:        {(t_1 - t_0) * 1000:10.2f} ms")
+        print(f"2. Calcolo Thread:     {(t_3 - t_2) * 1000:10.2f} ms")
+        print(f"3. NumPy Bitwise OR:   {(t_5 - t_4) * 1000:10.2f} ms")
+        print(f"4. Conversione Final:  {(t_7 - t_6) * 1000:10.2f} ms")
+        print(f"{'-' * 45}")
+        print(f"TEMPO TOTALE:          {(t_7 - t_0) * 1000:10.2f} ms")
+        print(f"{'=' * 45}\n")
 
         return self.bloom
 
     def run_threaded_worker(self, raw_datasets, num_factors=4):
+        t_0 = time.perf_counter()
 
+        # 1. Setup & Split
         chunks = self.split_data(raw_datasets, num_factors)
         m = self.bloom.get_size()
         k = self.bloom.get_hash_count()
         args = [(chunk, m, k) for chunk in chunks]
+        t_1 = time.perf_counter()
 
+        # 2. Calcolo Thread (Map)
+        t_2 = time.perf_counter()
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
             results = list(executor.map(worker.process_thread, args))
-            final_bitarray = bitarray(self.bloom.m)
-            final_bitarray.setall(0)
-            for ba in results:
-                final_bitarray |= ba
+        t_3 = time.perf_counter()
 
-            self.bloom.bit_array = final_bitarray
+        # 3. Fase di Merge (Reduce)
+        t_4 = time.perf_counter()
+        final_bitarray = bitarray(self.bloom.m)
+        final_bitarray.setall(0)
+        for ba in results:
+            final_bitarray |= ba  # Operazione OR efficiente
+
+        self.bloom.bit_array = final_bitarray
+        t_5 = time.perf_counter()
+
+        print(f"\n{'=' * 45}")
+        print(f" REPORT PROFILAZIONE: THREADED MERGE (BITARRAY)")
+        print(f"{'=' * 45}")
+        print(f"1. Setup & Split:        {(t_1 - t_0) * 1000:10.2f} ms")
+        print(f"2. Calcolo Thread: {(t_3 - t_2) * 1000:10.2f} ms")
+        print(f"3. Merge (OR logico):    {(t_5 - t_4) * 1000:10.2f} ms")
+        print(f"{'-' * 45}")
+        print(f"TEMPO TOTALE:            {(t_5 - t_0) * 1000:10.2f} ms")
+        print(f"{'=' * 45}\n")
+
         return self.bloom
 
     def run_threaded_shared(self, raw_datasets, num_factors=4):
-        """
-        Esegue il Bloom Filter in ambiente Python 3.14 (Free-Threaded)
-        utilizzando un array NumPy condiviso tra i thread.
-        """
+        t_0 = time.perf_counter()
+
         chunks = self.split_data(raw_datasets, num_factors)
         m = self.bloom.get_size()
         k = self.bloom.get_hash_count()
         args = [(chunk, m, k) for chunk in chunks]
+        t_1 = time.perf_counter()
 
+        # 1. Allocazione Condivisa
         shared_array = np.zeros(m, dtype=np.uint8)
         worker.toShare = shared_array
+        t_2 = time.perf_counter()
 
         try:
+            # 2. Calcolo Thread
+            t_3 = time.perf_counter()
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
                 list(executor.map(worker.process_thread_shared, args))
+            t_4 = time.perf_counter()
 
+            # 3. Conversione con packbits (Ottimizzata)
+            t_5 = time.perf_counter()
             packed_bytes = np.packbits(shared_array, bitorder='big')
-
             final_bloom_bits = bitarray()
             final_bloom_bits.frombytes(packed_bytes.tobytes())
-
             self.bloom.bit_array = final_bloom_bits[:m]
+            t_6 = time.perf_counter()
 
         finally:
             worker.toShare = None
+
+        print(f"\n{'=' * 45}")
+        print(f" REPORT PROFILAZIONE: THREADED SHARED (NUMPY)")
+        print(f"{'=' * 45}")
+        print(f"1. Setup & Alloc:      {(t_2 - t_0) * 1000:10.2f} ms")
+        print(f"2. Calcolo Thread:     {(t_4 - t_3) * 1000:10.2f} ms")
+        print(f"3. Packbits + Conv:    {(t_6 - t_5) * 1000:10.2f} ms (Veloce!)")
+        print(f"{'-' * 45}")
+        print(f"TEMPO TOTALE:          {(t_6 - t_0) * 1000:10.2f} ms")
+        print(f"{'=' * 45}\n")
 
         return self.bloom
 

@@ -34,6 +34,9 @@ def run_macro_profiling():
     print(f"\nProfilazione GLOBALE Shared...")
     orch.run_threaded_shared(dataset)
 
+    print(f"\nProfilazione GLOBALE bytearray...")
+    orch.run_threaded_worker_bytearray(dataset)
+
 
 if __name__ == "__main__":
     run_macro_profiling()
