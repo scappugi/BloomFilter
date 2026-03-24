@@ -137,6 +137,55 @@ class BloomOrchestrator:
             shm.unlink()
         return self.bloom
 
+    # metodo per provare a fare load balancing
+    def process_dynamic(self, raw_datasets, chunk_size=1000):
+        m = self.bloom.get_size()
+        k = self.bloom.get_hash_count()
+
+        # Usiamo un Manager per gestire la coda tra processi
+        with multiprocessing.Manager() as manager:
+            task_queue = manager.Queue()
+
+            # Riempiamo la coda con piccoli chunk
+            for i in range(0, len(raw_datasets), chunk_size):
+                task_queue.put(raw_datasets[i:i + chunk_size])
+
+            # Aggiungiamo i 'sentinel' per fermare i worker
+            for _ in range(self.num_workers):
+                task_queue.put(None)
+
+            with multiprocessing.Pool(processes=self.num_workers) as pool:
+                # funzione worker che legge dalla coda
+                results = pool.map(worker.process_from_queue, [(task_queue, m, k)] * self.num_workers)
+
+                # Classico reduce
+                global_bitarray = bitarray(m)
+                global_bitarray.setall(0)
+                for ba in results:
+                    global_bitarray |= ba
+
+                self.bloom.bit_array = global_bitarray
+        return self.bloom
+
+    def process_dynamic_imap(self, raw_datasets, chunk_size=5000):
+        m = self.bloom.get_size()
+        k = self.bloom.get_hash_count()
+
+        # Prepariamo gli argomenti (uno per ogni mini-chunk)
+        chunks = [raw_datasets[i:i + chunk_size] for i in range(0, len(raw_datasets), chunk_size)]
+        args = [(c, m, k) for c in chunks]
+
+        with multiprocessing.Pool(processes=self.num_workers) as pool:
+            # imap_unordered distribuisce i chunk ai worker non appena sono liberi
+            results = pool.imap_unordered(worker.process_chunk, args)
+
+            global_bitarray = bitarray(m)
+            global_bitarray.setall(0)
+            for ba in results:
+                global_bitarray |= ba
+
+        return self.bloom
+
     ###############################################################################################################
     #                                           Metodi per noGIL
     ###############################################################################################################
@@ -157,8 +206,15 @@ class BloomOrchestrator:
                 np.bitwise_or(final_array, arr_view, out=final_array)
             
             # Conversione finale e assegnazione
-            self.bloom.bit_array = bitarray(final_array.tolist())
-        
+            #self.bloom.bit_array = bitarray(final_array.tolist())
+
+            packed_bytes = np.packbits(final_array, bitorder='big')
+
+            final_bloom_bits = bitarray()
+            final_bloom_bits.frombytes(packed_bytes.tobytes())
+
+            self.bloom.bit_array = final_bloom_bits[:m]
+
         return self.bloom
 
     def run_threaded_worker(self, raw_datasets, num_factors=4):
@@ -206,3 +262,5 @@ class BloomOrchestrator:
             worker.toShare = None
 
         return self.bloom
+
+

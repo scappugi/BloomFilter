@@ -18,7 +18,6 @@ def run_sequential(dataset, n, p):
     bf = BloomFilter.BloomFilter.from_probability(n, p)
     em = EmailManager.EmailManager()
 
-    # 1. Caching per eliminare il Function Call Overhead
     calc_hashes = BloomFilter.BloomFilter.calculate_hashes
     m = bf.m
     k = bf.k
@@ -29,7 +28,6 @@ def run_sequential(dataset, n, p):
     for _ in range(n_runs):
         start = time.perf_counter()
 
-        # 2. Ciclo piatto utilizzando la TUA funzione calculate_hashes
         for raw_email in dataset:
             email = em.normalize_email(raw_email)
 

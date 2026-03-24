@@ -37,7 +37,7 @@ def process_chunk(args):
 
 
     # Ritorna l'array di bit locale (seriealizzazione piu veloce di una classica lista)
-    print(f"[Worker Locale] Scrittura bitarray: {time_writing:.4f}s")
+    #print(f"[Worker Locale] Scrittura bitarray: {time_writing:.4f}s")
     return all_indices
 
 #@profile
@@ -83,6 +83,23 @@ def process_joblib_shared(raw_emails_chunk, m, k, shm_name, dtype):
             shared_array[index] = 1
     #chiude il collegamento
     shm.close()
+
+def process_from_queue(args):
+    task_queue, m, k = args
+    local_bits = bitarray(m)
+    local_bits.setall(0)
+
+    while True:
+        chunk = task_queue.get()
+        if chunk is None:  # Sentinel
+            break
+
+        for raw_email in chunk:
+            email = _email_manager.normalize_email(raw_email)
+            indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
+            for idx in indices:
+                local_bits[idx] = 1
+    return local_bits
 
 ###############################################################################################################
 #                                           Metodi per noGIL
