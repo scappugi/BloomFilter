@@ -94,13 +94,14 @@ def run_query_benchmark_parallel(bloom_filter, em, test_presenti, test_assenti, 
     start_time = perf_counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
         futures = [executor.submit(worker_query, bloom_filter, em, chunk) for chunk in chunks_presenti]
-        sum(f.result() for f in concurrent.futures.as_completed(futures))
+        total = sum(f.result() for f in concurrent.futures.as_completed(futures))
     tempo_presenti = perf_counter() - start_time
 
     # Test Assenti
     start_time = perf_counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
         futures = [executor.submit(worker_query, bloom_filter, em, chunk) for chunk in chunks_assenti]
+        #qui non uso sum ma lo lascio per "sprecare tempo"
         sum(f.result() for f in concurrent.futures.as_completed(futures))
     tempo_assenti = perf_counter() - start_time
 
@@ -108,7 +109,7 @@ def run_query_benchmark_parallel(bloom_filter, em, test_presenti, test_assenti, 
     thr_presenti = N_TEST / tempo_presenti
     thr_assenti = N_TEST / tempo_assenti
 
-    return thr_presenti, thr_assenti
+    return thr_presenti, thr_assenti, total
 
 
 def run_query_benchmark_shared_memory(bloom_filter: BloomFilter.BloomFilter, em, test_presenti, test_assenti, n_process=None):
@@ -137,7 +138,7 @@ def run_query_benchmark_shared_memory(bloom_filter: BloomFilter.BloomFilter, em,
         with concurrent.futures.ProcessPoolExecutor(max_workers=n_process) as executor:
             start_time = perf_counter()
             futures = [executor.submit(worker_query_shared, shm.name,em, m,k,chunk) for chunk in chunks_presenti]
-            sum(f.result() for f in concurrent.futures.as_completed(futures))
+            total = sum(f.result() for f in concurrent.futures.as_completed(futures))
         tempo_presenti = perf_counter() - start_time
 
 
@@ -151,7 +152,7 @@ def run_query_benchmark_shared_memory(bloom_filter: BloomFilter.BloomFilter, em,
         thr_presenti = N_TEST / tempo_presenti
         thr_assenti = N_TEST / tempo_assenti
 
-        return thr_presenti, thr_assenti
+        return thr_presenti, thr_assenti, total
 
     finally:
         shm.close()
@@ -180,8 +181,8 @@ def run_query_benchmark_sequential(bf, em, test_presenti, test_assenti):
 
 
 def main():
-    N_TRAIN = 300000
-    N_TEST = 75000
+    N_TRAIN = 10000
+    N_TEST = 5000
     PROBABILITY = 0.01
 
     print("1. Generazione Dati...")
@@ -212,12 +213,14 @@ def main():
         if gil_enabled:
             th_pres, th_ass = None, None
         else:
-            th_pres, th_ass = run_query_benchmark_parallel(bf, em, test_presenti, test_assenti, n_threads=w)
-
+            th_pres, th_ass, err_total = run_query_benchmark_parallel(bf, em, test_presenti, test_assenti, n_threads=w)
+            print(f"⚠️ ERRORI(threads): attesi (test sui valori presenti) {len(test_presenti)}, ottenuti {err_total}")
         risultati_thread[w] = (th_pres, th_ass)
 
         # Test Process (Shared Memory)
-        pr_pres, pr_ass = run_query_benchmark_shared_memory(bf, em, test_presenti, test_assenti, n_process=w)
+        pr_pres, pr_ass, err_total_pc = run_query_benchmark_shared_memory(bf, em, test_presenti, test_assenti, n_process=w)
+        print(f"⚠️ ERRORI(processi): attesi (test sui valori presenti) {len(test_presenti)}, ottenuti {err_total_pc}")
+
         risultati_process[w] = (pr_pres, pr_ass)
 
     print("  -> Esecuzione completata!                        \n")
