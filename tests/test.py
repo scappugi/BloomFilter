@@ -29,9 +29,8 @@ def run_sequential(dataset, n, p):
         start = time.perf_counter()
 
         for raw_email in dataset:
-            email = em.normalize_email(raw_email)
 
-            # Uguale identico al worker joblib!
+            email = em.normalize_email(raw_email)
             for idx in calc_hashes(email, m, k):
                 bit_array[idx] = 1
 

@@ -112,7 +112,8 @@ def process_thread_bytearray(args):
     local_bytearray = bytearray(m)
 
     for raw_email in raw_emails_chunk:
-        email = _email_manager.normalize_email(raw_email)
+        # creo un nuovo emailmanager (lo farà ogni thread) usare quello globale non va bene coi thread.
+        email = EmailManager.EmailManager().normalize_email(raw_email)
         indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
 
         for idx in indices:
@@ -126,7 +127,8 @@ def process_thread(args):
     local_bits.setall(0)
 
     for raw_email in raw_emails_chunk:
-        email = _email_manager.normalize_email(raw_email)
+        # creo un nuovo emailmanager (lo farà ogni thread) usare quello globale non va bene coi thread.
+        email = EmailManager.EmailManager().normalize_email(raw_email)
         indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
         for idx in indices:
             local_bits[idx] = 1
@@ -137,11 +139,47 @@ def process_thread_shared(args):
     chunk, m, k = args
     local_array = toShare
     for raw_email in chunk:
-        email = _email_manager.normalize_email(raw_email)
+        # creo un nuovo emailmanager (lo farà ogni thread) usare quello globale non va bene coi thread.
+        email = EmailManager.EmailManager().normalize_email(raw_email)
         indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
         for idx in indices:
             toShare[idx] = 1
 
+########################################################################
+# Metodi per fare query
+########################################################################
+
+def worker_query(bloom_filter, emails):
+    """Worker per eseguire query in parallelo (Thread)."""
+    count = 0
+    for email in emails:
+        # crea l'email manager non si usa quello presente in worker.py
+        normalized = EmailManager.EmailManager().normalize_email(email)
+        if bloom_filter.contains(normalized):
+            count += 1
+    return count
+
+
+def worker_query_shared(shm_name, m, k, emails):
+    """Worker per eseguire query in parallelo con Shared Memory (Processi)."""
+    shm = shared_memory.SharedMemory(name=shm_name)
+    shared_array = np.ndarray(shape=(m,), dtype=np.uint8, buffer=shm.buf)
+    count = 0
+
+    try:
+        for raw_email in emails:
+            email = _email_manager.normalize_email(raw_email)
+            indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
+            presente = True
+            for idx in indices:
+                if shared_array[idx] == 0:
+                    presente = False
+                    break
+            if presente:
+                count += 1
+    finally:
+        shm.close()
+    return count
 
 
 

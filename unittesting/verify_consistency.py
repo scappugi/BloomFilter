@@ -2,7 +2,6 @@ import multiprocessing
 import unittest
 from src import BloomFilter, orchestrator, EmailManager
 
-
 class TestBloomConsistency(unittest.TestCase):
     def setUp(self):
         self.n_emails = 5000  # Abbastanza per generare collisioni, non troppo lento

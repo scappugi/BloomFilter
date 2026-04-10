@@ -252,7 +252,7 @@ class BloomOrchestrator:
         args = [(chunk, m, k) for chunk in chunks]
 
         shared_array = np.zeros(m, dtype=np.uint8)
-        worker.toShare = shared_array
+        worker.init_worker_shared(shared_array)
 
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
@@ -270,4 +270,100 @@ class BloomOrchestrator:
 
         return self.bloom
 
+    #######################################################
+    # Metodi per query
+    #######################################################
+
+    def query_parallel(self, test_presenti, test_assenti, n_threads=None):
+        """Esegue delle query usando thread (No-GIL)."""
+
+        n_threads = n_threads if n_threads else self.num_workers
+
+        # Usa il metodo split_data già presente nella classe
+        chunks_presenti = self.split_data(test_presenti,
+                                          n_threads // self.num_workers if n_threads > self.num_workers else 1)
+        chunks_assenti = self.split_data(test_assenti,
+                                         n_threads // self.num_workers if n_threads > self.num_workers else 1)
+
+        # Test Presenti
+        start_time = time.perf_counter()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+            futures = [executor.submit(worker.worker_query, self.bloom, chunk) for chunk in chunks_presenti]
+            total = sum(f.result() for f in concurrent.futures.as_completed(futures))
+        tempo_presenti = time.perf_counter() - start_time
+
+        # Test Assenti
+        start_time = time.perf_counter()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+            futures = [executor.submit(worker.worker_query, self.bloom, chunk) for chunk in chunks_assenti]
+            [f.result() for f in concurrent.futures.as_completed(futures)]
+        tempo_assenti = time.perf_counter() - start_time
+
+        thr_p = len(test_presenti) / tempo_presenti
+        thr_a = len(test_assenti) / tempo_assenti
+        return thr_p, thr_a, total
+
+    def query_shared_memory(self, test_presenti, test_assenti, n_process=None):
+        """Esegue query usando processi e memoria condivisa."""
+
+        n_process = n_process if n_process else self.num_workers
+        m = self.bloom.get_size()
+        k = self.bloom.get_hash_count()
+
+        # Allocazione memoria condivisa
+        shm = shared_memory.SharedMemory(create=True, size=m)  # dtype uint8 è 1 byte
+        try:
+            shared_array = np.ndarray(shape=(m,), dtype=np.uint8, buffer=shm.buf)
+            shared_array[:] = self.bloom.bit_array.tolist()
+
+            chunks_presenti = self.split_data(test_presenti, 1)  # suddivisione semplice
+            chunks_assenti = self.split_data(test_assenti, 1)
+
+            # Esecuzione con processi
+            with concurrent.futures.ProcessPoolExecutor(max_workers=n_process) as executor:
+                start_time = time.perf_counter()
+                futures = [executor.submit(worker.worker_query_shared, shm.name, m, k, chunk) for chunk in
+                           chunks_presenti]
+                total = sum(f.result() for f in concurrent.futures.as_completed(futures))
+                tempo_presenti = time.perf_counter() - start_time
+
+                start_time = time.perf_counter()
+                futures = [executor.submit(worker.worker_query_shared, shm.name, m, k, chunk) for chunk in
+                           chunks_assenti]
+                [f.result() for f in concurrent.futures.as_completed(futures)]
+                tempo_assenti = time.perf_counter() - start_time
+
+            thr_p = len(test_presenti) / tempo_presenti
+            thr_a = len(test_assenti) / tempo_assenti
+            return thr_p, thr_a, total
+        finally:
+            shm.close()
+            shm.unlink()
+
+    def query_sequential(self, test_presenti, test_assenti):
+        """Esegue il benchmark delle query in modalità sequenziale."""
+        from time import perf_counter
+        from src import EmailManager
+
+        # Recuperiamo l'istanza di EmailManager
+        em = EmailManager.EmailManager()
+
+        print("\n--- AVVIO BENCHMARK (Sequenziale) ---")
+
+        # Test Presenti
+        start_time = perf_counter()
+        for email in test_presenti:
+            self.bloom.contains(em.normalize_email(email))
+        tempo_presenti = perf_counter() - start_time
+
+        # Test Assenti
+        start_time = perf_counter()
+        for email in test_assenti:
+            self.bloom.contains(em.normalize_email(email))
+        tempo_assenti = perf_counter() - start_time
+
+        thr_p = len(test_presenti) / tempo_presenti
+        thr_a = len(test_assenti) / tempo_assenti
+
+        return thr_p, thr_a
 
