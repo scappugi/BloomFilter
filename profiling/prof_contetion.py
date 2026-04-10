@@ -13,6 +13,9 @@ if project_root not in sys.path:
 
 from src import orchestrator, BloomFilter, EmailManager
 
+
+### NON HA FORNITO RISULTATI UTILI -> NON è STATO COINVOLTO NELL' ANALISI
+
 def run_contention_profiling():
     N_EMAILS = 1500000
     P = 0.01

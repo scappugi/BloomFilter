@@ -2,13 +2,17 @@ import os
 import sys
 
 # Assicuriamoci che i percorsi siano corretti
-project_root = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-import test_utils
+from tests import test_utils
 from src import orchestrator
 
+
+################################################################
+#Assicurati di mettere @profile sopra i metodi coinvolti
+################################################################
 
 def run_macro_profiling():
     # Usiamo 500k o 1.5m per avere dati solidi

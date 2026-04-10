@@ -61,8 +61,7 @@ class TestBloomCorrectness(unittest.TestCase):
     def test_multiprocessing_shared_bloom_correctness(self):
         print(f"\n\nTesting Multiprocessing Shared Bloom Filter (Workers: {self.num_workers})...")
         orch = orchestrator.BloomOrchestrator(self.n_emails, self.probability, self.num_workers)
-        chunk = orch.split_data(self.dataset)
-        bf_parallel = orch.run_worker(chunk)
+        bf_parallel = orch.run_worker(self.dataset)
         self.verify_bloom_properties(bf_parallel)
 
     def test_joblib_bloom_correctness(self):

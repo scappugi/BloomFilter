@@ -29,7 +29,7 @@ class BloomOrchestrator:
         elif arg >= 1 and isinstance(arg, int):
             self.bloom = BloomFilter.BloomFilter.from_number_of_hashes(self.n_total, arg)
 
-#    @profile
+    #@profile
     def process_chunks(self, raw_datasets, num_factors=4):
 
         """
@@ -47,6 +47,8 @@ class BloomOrchestrator:
             # map step: distribuisce i chunk ai worker
             results = pool.imap_unordered(worker.process_chunk, args)
             #buffer = np.zeros(m, dtype=np.uint8)
+
+            #creo il bitarray e lo azzero (per sicurezza)
             global_bitarray = bitarray(m)
             global_bitarray.setall(0)
 
@@ -70,7 +72,7 @@ class BloomOrchestrator:
         return chunks
 
 #metodo per la gestione di un caso di memory shared
-#    @profile
+    #@profile
     def run_worker(self, raw_datasets, num_factors=4):
         chunks = self.split_data(raw_datasets, num_factors)
         shared_bit_array = multiprocessing.Array('b', self.bloom.m, lock=False)
@@ -86,6 +88,11 @@ class BloomOrchestrator:
             final_bloom.frombytes(packed_bytes.tobytes())
 
             final_bloom = final_bloom[:self.bloom.m]
+
+            #Vecchia versione (inefficiente) utilizzata nei grafici
+            #final_bloom = bitarray()
+            #final_bloom.extend(shared_bit_array)
+
         self.bloom.bit_array = final_bloom
         return self.bloom
 

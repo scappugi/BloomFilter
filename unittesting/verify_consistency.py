@@ -40,9 +40,7 @@ class TestBloomConsistency(unittest.TestCase):
 
     def test_multiprocessing_shared_consistency(self):
         print(f"\n\nTesting Multiprocessing shared (Workers: {self.num_workers})...")
-
-        chunk = self.orch.split_data(self.dataset)
-        bf_parallel = self.orch.run_worker(chunk)
+        bf_parallel = self.orch.run_worker(self.dataset)
         self.assertEqual(self.bf_seq.m, bf_parallel.m, "Le dimensioni (m) non coincidono")
         self.assertEqual(self.bf_seq.k, bf_parallel.k, "Le dimensioni (k) non coincidono")
         self.assertEqual(self.bit_array, bf_parallel.get_bit_array(), "Le dimensioni (m) non coincidono")
