@@ -2,7 +2,7 @@ import time
 
 from bitarray import bitarray
 
-from src import BloomFilter
+from src import BloomFilter, EmailManager
 import multiprocessing
 from src import worker
 from joblib import Parallel, delayed
@@ -327,6 +327,7 @@ class BloomOrchestrator:
                 total = sum(f.result() for f in concurrent.futures.as_completed(futures))
                 tempo_presenti = time.perf_counter() - start_time
 
+            with concurrent.futures.ProcessPoolExecutor(max_workers=n_process) as executor:
                 start_time = time.perf_counter()
                 futures = [executor.submit(worker.worker_query_shared, shm.name, m, k, chunk) for chunk in
                            chunks_assenti]
@@ -342,25 +343,22 @@ class BloomOrchestrator:
 
     def query_sequential(self, test_presenti, test_assenti):
         """Esegue il benchmark delle query in modalità sequenziale."""
-        from time import perf_counter
-        from src import EmailManager
-
         # Recuperiamo l'istanza di EmailManager
         em = EmailManager.EmailManager()
 
         print("\n--- AVVIO BENCHMARK (Sequenziale) ---")
 
         # Test Presenti
-        start_time = perf_counter()
+        start_time = time.perf_counter()
         for email in test_presenti:
             self.bloom.contains(em.normalize_email(email))
-        tempo_presenti = perf_counter() - start_time
+        tempo_presenti = time.perf_counter() - start_time
 
         # Test Assenti
-        start_time = perf_counter()
+        start_time = time.perf_counter()
         for email in test_assenti:
             self.bloom.contains(em.normalize_email(email))
-        tempo_assenti = perf_counter() - start_time
+        tempo_assenti = time.perf_counter() - start_time
 
         thr_p = len(test_presenti) / tempo_presenti
         thr_a = len(test_assenti) / tempo_assenti
