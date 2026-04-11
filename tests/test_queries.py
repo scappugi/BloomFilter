@@ -314,8 +314,8 @@ def print_bloom_correctness(bloom_filter, dataset_presenti, test_assenti, em, pr
 
 def main():
     # Configurazione parametri
-    N_TRAIN = 1000000
-    N_TEST = 200000
+    N_TRAIN = 3000000
+    N_TEST = 1000000
     PROBABILITY = 0.01
 
     print("1. Generazione Dati...")
@@ -348,6 +348,8 @@ def main():
 
     for w in worker_counts:
         print(f"  -> Esecuzione con {w} worker...", end="\r", flush=True)
+
+        orch.num_workers = w
 
         # Test Thread
         gil_enabled = not hasattr(sys, "_is_gil_enabled") or sys._is_gil_enabled()

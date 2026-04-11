@@ -280,10 +280,8 @@ class BloomOrchestrator:
         n_threads = n_threads if n_threads else self.num_workers
 
         # Usa il metodo split_data già presente nella classe
-        chunks_presenti = self.split_data(test_presenti,
-                                          n_threads // self.num_workers if n_threads > self.num_workers else 1)
-        chunks_assenti = self.split_data(test_assenti,
-                                         n_threads // self.num_workers if n_threads > self.num_workers else 1)
+        chunks_presenti = self.split_data(test_presenti, 1)
+        chunks_assenti = self.split_data(test_assenti, 1)
 
         # Test Presenti
         start_time = time.perf_counter()
