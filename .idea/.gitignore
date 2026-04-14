@@ -6,3 +6,12 @@
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
+# Script di profiling e test specifici
+profiling/prof_contetion.py
+profiling/prof_sh_vs_std.py
+tests/test_load_balancing.py
+
+# Script main alternativi
+main_map_reduce.py
+main_no_gil.py
+main_seq.py
