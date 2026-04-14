@@ -39,3 +39,7 @@ Avvia la suite di test automatizzati per validare l'integrità del sistema. Ques
 Per eseguire l'intera suite di benchmark e i test di validazione in sequenza:
 
 bash: ```python main.py all```
+
+### Ricordarsi di esegure il generate_csv() presente in generate_dataset.py per avere i file di train
+
+### Se non si vuole eseguire il codice da command line è possibile eseguire i file presenti in "tests\..." da un IDE a piacere dopo aver clonato il codice.
