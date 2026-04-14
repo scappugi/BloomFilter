@@ -1,4 +1,5 @@
 import time
+from typing import Any
 
 from src import BloomFilter
 from src import EmailManager
@@ -6,7 +7,7 @@ from bitarray import bitarray
 import numpy as np
 from multiprocessing import shared_memory
 # Variabili globale a livello di modulo per il worker corrente
-toShare = None
+toShare: Any = None
 _email_manager = EmailManager.EmailManager()
 
 
@@ -53,7 +54,7 @@ def process_chunk_shared(args):
         # Aggiorna l'array di bit condiviso
         t0 = time.perf_counter()
         for index in indices:
-            toShare[index] = 1
+            local_array[index] = 1
         t1 = time.perf_counter()
         time_writing += t1 - t0
     #print(f"[Worker Condiviso] Scrittura bytearray: {time_writing:.4f}s")
@@ -75,14 +76,14 @@ def process_joblib_standard(chunk, m, k):
 def process_joblib_shared(raw_emails_chunk, m, k, shm_name, dtype):
     shm = shared_memory.SharedMemory(name = shm_name)
     shared_array = np.ndarray(shape=(m,), dtype=dtype, buffer=shm.buf)
-    for raw_email in raw_emails_chunk:
-        email = _email_manager.normalize_email(raw_email)
-        indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
-        # Aggiorna l'array di bit condiviso
-        for index in indices:
-            shared_array[index] = 1
-    #chiude il collegamento
-    shm.close()
+    try:
+        for raw_email in raw_emails_chunk:
+            email = _email_manager.normalize_email(raw_email)
+            indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
+            for index in indices:
+                shared_array[index] = 1
+    finally:
+        shm.close()
 
 def process_from_queue(args):
     task_queue, m, k = args
@@ -110,10 +111,11 @@ def process_thread_bytearray(args):
 
     raw_emails_chunk, m, k = args
     local_bytearray = bytearray(m)
+    # creo un nuovo emailmanager (lo farà ogni thread) usare quello globale non va bene coi thread.
+    local_em = EmailManager.EmailManager()
 
     for raw_email in raw_emails_chunk:
-        # creo un nuovo emailmanager (lo farà ogni thread) usare quello globale non va bene coi thread.
-        email = EmailManager.EmailManager().normalize_email(raw_email)
+        email = local_em.normalize_email(raw_email)
         indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
 
         for idx in indices:
@@ -125,10 +127,11 @@ def process_thread(args):
     raw_emails_chunk, m, k = args
     local_bits = bitarray(m)
     local_bits.setall(0)
+    local_em = EmailManager.EmailManager()
+
 
     for raw_email in raw_emails_chunk:
-        # creo un nuovo emailmanager (lo farà ogni thread) usare quello globale non va bene coi thread.
-        email = EmailManager.EmailManager().normalize_email(raw_email)
+        email = local_em.normalize_email(raw_email)
         indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
         for idx in indices:
             local_bits[idx] = 1
@@ -138,15 +141,16 @@ def process_thread(args):
 def process_thread_shared(args):
     chunk, m, k = args
     local_array = toShare
+    local_em = EmailManager.EmailManager()
+
     for raw_email in chunk:
-        # creo un nuovo emailmanager (lo farà ogni thread) usare quello globale non va bene coi thread.
-        email = EmailManager.EmailManager().normalize_email(raw_email)
+        email = local_em.normalize_email(raw_email)
         indices = BloomFilter.BloomFilter.calculate_hashes(email, m, k)
         for idx in indices:
-            toShare[idx] = 1
+            local_array[idx] = 1
 
 ########################################################################
-# Metodi per fare query
+                        # Metodi per fare query
 ########################################################################
 
 def worker_query(bloom_filter, emails):

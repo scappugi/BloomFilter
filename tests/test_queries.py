@@ -348,9 +348,6 @@ def main():
 
     for w in worker_counts:
         print(f"  -> Esecuzione con {w} worker...", end="\r", flush=True)
-
-        orch.num_workers = w
-
         # Test Thread
         gil_enabled = not hasattr(sys, "_is_gil_enabled") or sys._is_gil_enabled()
         if gil_enabled:

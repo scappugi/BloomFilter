@@ -1,6 +1,6 @@
 import os
 import sys
-import test_utils
+from tests import test_utils
 
 project_root = os.path.dirname(os.path.abspath(__file__))
 if project_root not in sys.path:
@@ -9,7 +9,7 @@ if project_root not in sys.path:
 from src import worker, EmailManager, BloomFilter  # <-- Aggiunto l'import di BloomFilter
 import multiprocessing
 
-#Per usare questo medoto devi utilizzare @profile su tutte le funzioni che vuoi profilare
+#!!!!!!!!!!! Per usare questo medoto devi utilizzare @profile su tutte le funzioni che vuoi profilare
 def run_bench():
     filename = "dataset_500k.csv"
     print(f"Caricamento {filename} in memoria...")

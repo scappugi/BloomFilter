@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import multiprocessing
+from joblib.externals.loky import get_reusable_executor
 
 # --- Inizio Blocco di Correzione Percorsi ---
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -84,9 +85,11 @@ def run_parallel_joblib(dataset, n, p, np = multiprocessing.cpu_count()):
         start = time.perf_counter()
         bf = orch.run_joblib_worker(dataset)
         end = time.perf_counter()
+        get_reusable_executor().shutdown(wait=True)
         avg_times.append(end - start)
     avg_time = sum(avg_times) / len(avg_times)
     print(f"\n Tempo medio: {avg_time:.4f}s")
+
     return bf, avg_time
 
 def run_parallel_joblib_shared(dataset, n, p, np = multiprocessing.cpu_count()):
@@ -100,14 +103,19 @@ def run_parallel_joblib_shared(dataset, n, p, np = multiprocessing.cpu_count()):
         start = time.perf_counter()
         bf = orch.run_joblib_shared_worker(dataset)
         end = time.perf_counter()
+
+        #importante altrimenti joblib "bara": riutilizza i processi gia aperti senza aprirne di nuovi!
+        get_reusable_executor().shutdown(wait=True)
+
         avg_times.append(end - start)
     avg_time = sum(avg_times) / len(avg_times)
     print(f"\n Tempo medio: {avg_time:.4f}s")
+
     return bf, avg_time
 
 def main():
     PROBABILITY = 0.01
-    DATASETS_FILES = ["dataset_10k.csv","dataset_100k.csv","dataset_500k.csv", "dataset_1.5m.csv", "dataset_3m.csv", "dataset_5m.csv", "dataset_10m.csv"]
+    DATASETS_FILES = ["dataset_10k.csv","dataset_100k.csv","dataset_500k.csv", "dataset_1.5m.csv"] #"dataset_3m.csv", "dataset_5m.csv", "dataset_10m.csv"
 
     print(f"--- BENCHMARK AUTOMATICO (CPU Cores: {multiprocessing.cpu_count()}) ---")
 

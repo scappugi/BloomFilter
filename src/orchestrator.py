@@ -96,6 +96,7 @@ class BloomOrchestrator:
         self.bloom.bit_array = final_bloom
         return self.bloom
 
+    #@profile
     def run_joblib_worker(self, raw_datasets, num_factors=4):
         chunks = self.split_data(raw_datasets, num_factors)
         m = self.bloom.get_size()
@@ -117,6 +118,7 @@ class BloomOrchestrator:
         self.bloom.bit_array = buffer
         return self.bloom
 
+    #@profile
     def run_joblib_shared_worker(self, raw_datasets, num_factors=4):
         chunks = self.split_data(raw_datasets, num_factors)
 
@@ -258,12 +260,18 @@ class BloomOrchestrator:
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
                 list(executor.map(worker.process_thread_shared, args))
 
+            # Conversione finale e assegnazione (ottimizzata per evitare overhead di conversione)
             packed_bytes = np.packbits(shared_array, bitorder='big')
 
             final_bloom_bits = bitarray()
             final_bloom_bits.frombytes(packed_bytes.tobytes())
 
             self.bloom.bit_array = final_bloom_bits[:m]
+
+            # Vecchia versione (inefficiente) utilizzata nei grafici
+            # final_bloom_bits = bitarray()
+            # final_bloom_bits.extend(shared_array)
+            # self.bloom.bit_array = final_bloom_bits[:m]
 
         finally:
             worker.toShare = None
@@ -276,9 +284,8 @@ class BloomOrchestrator:
 
     def query_parallel(self, test_presenti, test_assenti, n_threads=None):
         """Esegue delle query usando thread (No-GIL)."""
-
-        n_threads = n_threads if n_threads else self.num_workers
-
+        if n_threads is not None:
+            self.num_workers = n_threads
         # Usa il metodo split_data già presente nella classe
         chunks_presenti = self.split_data(test_presenti, 1)
         chunks_assenti = self.split_data(test_assenti, 1)
@@ -303,8 +310,9 @@ class BloomOrchestrator:
 
     def query_shared_memory(self, test_presenti, test_assenti, n_process=None):
         """Esegue query usando processi e memoria condivisa."""
+        if n_process is not None:
+            self.num_workers = n_process
 
-        n_process = n_process if n_process else self.num_workers
         m = self.bloom.get_size()
         k = self.bloom.get_hash_count()
 

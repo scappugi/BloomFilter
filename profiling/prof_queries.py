@@ -7,11 +7,11 @@ from multiprocessing import shared_memory
 import numpy as np
 
 # Assicuriamoci che i percorsi siano corretti
-project_root = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from src import EmailManager, BloomFilter
+from src import EmailManager, BloomFilter, orchestrator
 import random
 
 
@@ -31,7 +31,7 @@ def worker_process_profiled(shm_name, em, m, k, emails):
 
     # Misuriamo il tempo per connettersi alla memoria condivisa (Overhead IPC locale)
     shm = shared_memory.SharedMemory(name=shm_name)
-    shared_array = np.ndarray(shape=(m,), dtype=np.int8, buffer=shm.buf)
+    shared_array = np.ndarray(shape=(m,), dtype=np.uint8, buffer=shm.buf)
 
     t_ready = time.perf_counter()
     count = 0
@@ -65,18 +65,17 @@ def run_profiling():
 
     print(f"Preparazione Dati ({N_TRAIN} Train, {N_TEST} Test)...")
     em = EmailManager.EmailManager()
-    bf = BloomFilter.BloomFilter.from_probability(N_TRAIN, PROBABILITY)
+
+    orch = orchestrator.BloomOrchestrator(N_TRAIN, PROBABILITY, num_workers=WORKERS)
+
     dataset_training = em.generate_complex_email(N_TRAIN)
     for email in dataset_training:
-        bf.add(em.normalize_email(email))
+        orch.bloom.add(em.normalize_email(email))
 
     test_presenti = random.sample(dataset_training, N_TEST)
 
-    def split_list(lst, n):
-        k, m = divmod(len(lst), n)
-        return [lst[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n)]
-
-    chunks = split_list(test_presenti, WORKERS)
+    # fruttiamo lo split_data ufficiale della classe Orchestrator
+    chunks = orch.split_data(test_presenti, 1)
 
     print("\n" + "=" * 55)
     print(f" PROFILAZIONE THREAD (No-GIL) - {WORKERS} Worker")
@@ -85,7 +84,7 @@ def run_profiling():
     t0 = time.perf_counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as executor:
         t1 = time.perf_counter()
-        futures = [executor.submit(worker_thread_profiled, bf, em, chunk) for chunk in chunks]
+        futures = [executor.submit(worker_thread_profiled, orch.bloom, em, chunk) for chunk in chunks]
         results = [f.result() for f in concurrent.futures.as_completed(futures)]
         t2 = time.perf_counter()
 
@@ -103,19 +102,18 @@ def run_profiling():
     print("=" * 55)
 
     t0 = time.perf_counter()
-    m = bf.get_size()
-    k = bf.get_hash_count()
+    m = orch.bloom.get_size()
+    k = orch.bloom.get_hash_count()
 
-    # FASE 1: Creazione e Copia in Memoria Condivisa (Il grande scoglio)
-    size_in_bytes = m * np.dtype(np.int8).itemsize
-    shm = shared_memory.SharedMemory(create=True, size=size_in_bytes)
+    # Creazione SHM allineata con l'orchestratore
+    shm = shared_memory.SharedMemory(create=True, size=m)
     try:
-        bit_array = np.ndarray(shape=(m,), dtype=np.int8, buffer=shm.buf)
+        bit_array = np.ndarray(shape=(m,), dtype=np.uint8, buffer=shm.buf)
         bit_array.fill(0)
-        bit_array[:] = bf.bit_array.tolist()  # COPIA COSTOSISSIMA
+        bit_array[:] = orch.bloom.bit_array.tolist()  # COPIA COSTOSISSIMA
         t1 = time.perf_counter()
 
-        # FASE 2: Esecuzione
+
         with concurrent.futures.ProcessPoolExecutor(max_workers=WORKERS) as executor:
             t2 = time.perf_counter()
             futures = [executor.submit(worker_process_profiled, shm.name, em, m, k, chunk) for chunk in chunks]

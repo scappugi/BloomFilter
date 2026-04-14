@@ -36,6 +36,7 @@ class BloomFilter:
     def calculate_hashes(item,m:int, k:int):
         indices = []
         for i in range(k):
+            # i fa da seed
             indices.append(mmh3.hash(str(item), i) % m)
         return indices
 

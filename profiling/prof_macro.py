@@ -36,6 +36,13 @@ def run_macro_profiling():
     print(f"\nProfilazione GLOBALE Shared...")
     orch.run_worker(dataset)
 
+    # print(f"\n Profilazione Joblib standard...")
+    # orch.run_joblib_worker(dataset)
+    #
+    # print(f"\nProfilazione Joblib shared...")
+    # orch.run_joblib_shared_worker(dataset)
+
+
 
 if __name__ == "__main__":
     run_macro_profiling()
